@@ -4,11 +4,11 @@ help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 up:         ## Start Postgres + Redis
-	docker compose up -d
+	podman-compose up -d
 down:       ## Stop infrastructure
-	docker compose down
+	podman-compose down
 migrate:    ## Apply SQL migrations
-	docker compose exec -T postgres psql -U astralis -d astralis < db/migrations/0001_init.sql
+	podman-compose exec -T postgres psql -U astralis -d astralis < db/migrations/0001_init.sql
 api:        ## Run Go API
 	cd services/gateway && go run ./cmd/api
 worker:     ## Run Go background worker
