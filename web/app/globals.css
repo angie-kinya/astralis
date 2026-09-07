@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+   Tokens.
+
+   Dark is the default because most of these conversations happen late.
+   Light is a real theme, not an afterthought: someone journalling at 08:00
+   on a bright morning should not be handed a black screen.
+   -------------------------------------------------------------------------- */
+@layer base {
+  :root {
+    --ground:       10  9  16;
+    --surface:      18  17  27;
+    --raised:       26  24  38;
+    --line:         38  35  54;
+    --line-strong:  55  50  77;
+    --ink:         236 234 245;
+    --ink-2:       165 160 188;
+    --ink-3:       111 106 136;
+    --accent:      139 123 240;
+    --accent-ink:   10   9  16;
+    --signal:      224 164  88;
+
+    --halo-a: rgba(139, 123, 240, 0.10);
+    --halo-b: rgba(90, 120, 220, 0.07);
+  }
+
+  [data-theme="light"] {
+    --ground:      251 250 248;
+    --surface:     255 255 255;
+    --raised:      242 240 236;
+    --line:        227 223 216;
+    --line-strong: 200 194 184;
+    --ink:          26  24  34;
+    --ink-2:        87  83 107;
+    --ink-3:       138 133 153;
+    --accent:       91  75 214;
+    --accent-ink:  255 255 255;
+    --signal:      150  90  20;
+
+    --halo-a: rgba(91, 75, 214, 0.06);
+    --halo-b: rgba(120, 140, 220, 0.05);
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    @apply bg-ground text-ink antialiased;
+    /* Two very soft light sources rather than a gradient wash. At 6-10%
+       opacity they read as depth, not decoration. */
+    background-image:
+      radial-gradient(58rem 38rem at 12% -12%, var(--halo-a), transparent 62%),
+      radial-gradient(46rem 32rem at 96% 4%,  var(--halo-b), transparent 58%);
+    background-attachment: fixed;
+    font-feature-settings: "cv05" 1, "ss01" 1;
+  }
+
+  ::selection { @apply bg-accent/25; }
+
+  /* Keyboard users get a visible ring; pointer users never see it. */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2;
+    --tw-ring-offset-color: rgb(var(--ground));
+  }
+
+  /* Scrollbars that do not shout. */
+  * { scrollbar-width: thin; scrollbar-color: rgb(var(--line-strong)) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--line-strong)); border-radius: 99px;
+    border: 3px solid transparent; background-clip: content-box;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg
+           px-4 py-2.5 text-[0.8125rem] font-medium tracking-[-0.01em]
+           transition-[background-color,color,border-color,transform] duration-150
+           active:translate-y-px
+           disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-primary { @apply btn bg-accent text-accent-ink hover:brightness-110; }
+  .btn-quiet   { @apply btn border border-line text-ink-2 hover:bg-raised hover:text-ink; }
+  .btn-danger  { @apply btn border border-signal/50 text-signal hover:bg-signal/10; }
+
+  .card { @apply rounded-xl border border-line bg-surface; }
+
+  /* The eyebrow used above section headings and beside the wordmark. */
+  .eyebrow {
+    @apply font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-ink-3;
+  }
+
+  /* Assistant prose. Serif, generous leading, real paragraph rhythm. */
+  .prose-astralis {
+    @apply font-serif text-[1.0625rem] leading-[1.72] text-ink;
+  }
+  .prose-astralis > p + p { @apply mt-4; }
+  .prose-astralis strong   { @apply font-semibold; }
+  .prose-astralis a        { @apply text-accent underline decoration-accent/40 underline-offset-2; }
+  .prose-astralis ul       { @apply mt-3 space-y-1.5 pl-5; list-style: disc; }
+
+  .hairline { @apply h-px w-full bg-line; }
+}
+
+/* Honour an OS-level request for less motion. Not optional. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

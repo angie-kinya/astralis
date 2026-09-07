@@ -1,0 +1,37 @@
+# secrets — never, under any circumstances
+.env
+.env.local
+*.pem
+*.key
+
+# go
+services/gateway/bin/
+*.test
+coverage.out
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+services/safety-classifier/models/
+
+# node / next
+node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+.tsbuildinfo
+*.tsbuildinfo
+
+# editors / os
+.DS_Store
+*.swp
+.idea/
+
+# scratch
+/tmp/
+
+requests.http
+.vscode

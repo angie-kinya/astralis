@@ -1,0 +1,104 @@
+# Runs on every push and PR. This is the gate: if it is red, nothing ships.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    name: go — vet, fmt, test
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: services/gateway }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/gateway/go.mod   # one source of truth for the version
+          cache-dependency-path: services/gateway/go.sum
+
+      # gofmt has no config and no opinions to argue about. Fail on drift.
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # -race catches data races the compiler cannot. Cheap here, priceless later
+      # when the rate limiter and worker pool are under real concurrency.
+      - name: go test
+        run: go test ./... -race -cover
+
+  python:
+    name: python — safety classifier
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: services/safety-classifier }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/safety-classifier/requirements.txt
+      - run: pip install -r requirements.txt
+      # These tests encode the safety trade-off. They are not optional.
+      - run: pytest -q
+
+  web:
+    name: web — typecheck and build
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: web }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          # Build-time only; the real values live in the hosting provider.
+          AUTH_SECRET: ci-placeholder-not-a-real-secret
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+
+  migrations:
+    name: sql — migrations apply cleanly
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: astralis
+          POSTGRES_PASSWORD: astralis
+          POSTGRES_DB: astralis
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U astralis"
+          --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      # A migration that only ever runs against your laptop's database is a
+      # migration you have not tested. Apply every file to a clean database.
+      - name: apply migrations
+        env: { PGPASSWORD: astralis }
+        run: |
+          for f in db/migrations/*.sql; do
+            echo "applying $f"
+            psql -h localhost -U astralis -d astralis -v ON_ERROR_STOP=1 -f "$f"
+          done
+      - name: re-apply (must be idempotent)
+        env: { PGPASSWORD: astralis }
+        run: |
+          for f in db/migrations/*.sql; do
+            psql -h localhost -U astralis -d astralis -v ON_ERROR_STOP=1 -f "$f"
+          done

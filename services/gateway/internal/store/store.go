@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Store struct { pool *pgxpool.Pool }
+type Store struct{ pool *pgxpool.Pool }
 
 func New(ctx context.Context, dsn string) (*Store, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
@@ -31,34 +31,41 @@ func New(ctx context.Context, dsn string) (*Store, error) {
 	return &Store{pool: pool}, nil
 }
 
-func (s *Store) Close() { s.pool.Close() }
+func (s *Store) Close()              { s.pool.Close() }
 func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
 // models
 type User struct {
-	ID string
-	ExternalID string
-	Email string
-	DisplayName string
+	ID             string
+	ExternalID     string
+	Email          string
+	DisplayName    string
 	ConsentVersion *string
 }
 
 func (u User) HasConsented() bool { return u.ConsentVersion != nil }
 
+// Message and Chunk cross the API boundary, so they carry explicit JSON tags.
+// Without them Go marshals the field names verbatim and the frontend ends up
+// reading `ID`, `URL`, `CreatedAt` — an API contract that is an accident of Go
+// naming rather than a decision. Tag anything that gets serialised.
 type Message struct {
-	ID string
-	Role string
-	Content string
-	CreatedAt time.Time
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type Chunk struct {
-	ID string
-	Content string
-	Title string
-	URL string
-	Year *int
-	Score float64
+	ID string `json:"id"`
+	// Content is the retrieved passage. It is deliberately NOT serialised to
+	// the client: it is prompt input, not user-facing text, and shipping it
+	// would put a wall of abstract into every reply payload.
+	Content string  `json:"-"`
+	Title   string  `json:"title"`
+	URL     string  `json:"url"`
+	Year    *int    `json:"year"`
+	Score   float64 `json:"score"`
 }
 
 // users
@@ -71,13 +78,13 @@ func (s *Store) UpsertUser(ctx context.Context, externalID, email, name string) 
 		RETURNING id, external_id, email, COALESCE(display_name,''), consent_version`
 	var u User
 	err := s.pool.QueryRow(ctx, q, externalID, email, name).
-	    Scan(&u.ID, &u.ExternalID, &u.Email, &u.DisplayName, &u.ConsentVersion)
+		Scan(&u.ID, &u.ExternalID, &u.Email, &u.DisplayName, &u.ConsentVersion)
 	return u, err
 }
 
 func (s *Store) GrantConsent(ctx context.Context, userID, version string) error {
-	_, err := s.pool.Exec(stx,
-	    `UPDATE users SET consent_version=$2, consent_given_at=now() WHERE id=$1`,
+	_, err := s.pool.Exec(ctx,
+		`UPDATE users SET consent_version=$2, consent_given_at=now() WHERE id=$1`,
 		userID, version)
 	return err
 }
@@ -139,7 +146,7 @@ func (s *Store) SetSessionTitleIfEmpty(ctx context.Context, sessionID, title str
 	return err
 }
 
-//messages
+// messages
 func (s *Store) AddMessage(ctx context.Context, sessionID, role, content string, flagged bool, score float64) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, `
@@ -293,7 +300,7 @@ func (s *Store) FlagCrisis(ctx context.Context, messageID, rule string, score fl
 
 // helpers
 // Vectore formats a Go slice as the literal pgvectore expects: [0.1,0.2...]
-// pgx has no native vector type, so we hand it a string and cast in SQL. 
+// pgx has no native vector type, so we hand it a string and cast in SQL.
 func Vector(v []float32) string {
 	parts := make([]string, len(v))
 	for i, f := range v {

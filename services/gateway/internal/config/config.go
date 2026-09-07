@@ -8,28 +8,27 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type Cobfig struct {
-	Env string
+type Config struct {
+	Env  string
 	Port string
 
 	DatabaseURL string
-	RedisAddr string
+	RedisAddr   string
 
 	BackendJWTSecret string
-	CORSOrigin string
+	CORSOrigin       string
 
 	AnthropicAPIKey string
-	ClaudeModel string
+	ClaudeModel     string
 
 	EmbedProvider string
-	OpenAIAPIKey string
-	EmbedModel string
-	EmbedDim int
+	OpenAIAPIKey  string
+	EmbedModel    string
+	EmbedDim      int
 
 	SafetyClassifierURL string
-	SafetyThreshold float64
+	SafetyThreshold     float64
 }
-
 
 func Load() (*Config, error) {
 	_ = godotenv.Load("../../.env", ".env")

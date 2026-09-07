@@ -21,7 +21,7 @@ func TestParse(t *testing.T) {
 	valid := Claims{
 		Email: "a@b.com",
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "user-1",
+			Subject:   "user-1",
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
 	}
@@ -31,8 +31,8 @@ func TestParse(t *testing.T) {
 	noSub.Subject = ""
 
 	cases := []struct {
-		name string
-		token string
+		name    string
+		token   string
 		wantErr bool
 	}{
 		{"valid", sign(t, secret, valid), false},

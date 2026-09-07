@@ -1,0 +1,38 @@
+# Deploys only after `test` has gone green on main. Never deploys from a PR.
+#
+# Render builds the images itself from the repo, so this workflow just pokes
+# the deploy hooks. Add each hook URL under Settings -> Secrets -> Actions.
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [test]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  render:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: trigger api
+        run: curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}"
+      - name: trigger worker
+        run: curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WORKER }}"
+      - name: trigger safety classifier
+        run: curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_SAFETY }}"
+
+  smoke:
+    needs: render
+    runs-on: ubuntu-latest
+    steps:
+      # A deploy that is not verified is a deploy you are guessing about.
+      - name: wait for api to come back healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "${{ secrets.API_BASE_URL }}/healthz" | grep -q '"status":"ok"'; then
+              echo "healthy after ${i} attempts"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::API did not become healthy within 5 minutes"; exit 1

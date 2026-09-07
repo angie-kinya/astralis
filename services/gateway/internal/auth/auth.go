@@ -19,7 +19,7 @@ import (
 
 type Claims struct {
 	Email string `json:"email"`
-	Name string `json:"name"`
+	Name  string `json:"name"`
 	jwt.RegisteredClaims
 }
 
