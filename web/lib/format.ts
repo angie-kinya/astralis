@@ -25,3 +25,14 @@ export function timeOfDay(iso: string): string {
 export function paragraphs(text: string): string[] {
   return text.trim().split(/\n{2,}/).filter(Boolean);
 }
+
+/** Coarse relative time. Exact minutes imply a precision presence does not have. */
+export function relative(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return days < 7 ? `${days}d ago` : "a while ago";
+}

@@ -16,9 +16,16 @@ const ConsentVersion = "2026-09-v1"
 
 func (s *Server) handleMe(c *gin.Context) {
 	u := currentUser(c)
+	handle := ""
+	if u.Handle != nil {
+		handle = *u.Handle
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"id": u.ID, "email": u.Email, "displayName": u.DisplayName,
 		"consented": u.HasConsented(), "consentVersion": ConsentVersion,
+		// handle drives onboarding: empty means Astralis has not yet asked
+		// what to call this person.
+		"handle": handle, "peerOptIn": u.PeerOptIn,
 	})
 }
 

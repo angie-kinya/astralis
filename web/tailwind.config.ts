@@ -1,13 +1,20 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Every colour in the app is a CSS custom property defined in globals.css and
- * re-declared for the light theme. Nothing here is a literal hex, and no
- * component should ever contain one either -- that is the only way a second
- * theme stays honest instead of drifting.
+ * Two typefaces, deliberately.
  *
- * The values are space-separated RGB channels so Tailwind's opacity modifiers
- * (bg-surface/70) still work.
+ *   mono  — JetBrains Mono. The editor face. It carries every structural
+ *           element: handles, timestamps, labels, status, the composer caret.
+ *           It is what makes Astralis feel like an instrument rather than a
+ *           chat window.
+ *   sans  — Sora. Geometric, slightly futuristic, and calm enough to read a
+ *           long reply in. It carries prose and headings only.
+ *
+ * Nothing else. A third face would dilute both.
+ *
+ * Every colour is a CSS custom property declared in globals.css and redeclared
+ * for the light theme. No component contains a hex value — that is the only
+ * way a second theme stays honest instead of drifting out of sync.
  */
 const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
 
@@ -16,45 +23,50 @@ export default {
   theme: {
     extend: {
       colors: {
-        ground:    token("ground"),      // page
-        surface:   token("surface"),     // cards, rail
-        raised:    token("raised"),      // hover, active
-        line:      token("line"),        // hairline borders
-        "line-strong": token("line-strong"),
-        ink:       token("ink"),         // primary text
-        "ink-2":   token("ink-2"),       // secondary text
-        "ink-3":   token("ink-3"),       // metadata, disabled
-        accent:    token("accent"),      // one accent, used sparingly
-        "accent-ink": token("accent-ink"),
-        signal:    token("signal"),      // the crisis card only
+        bg:        token("bg"),
+        surface:   token("surface"),
+        raised:    token("raised"),
+        line:      token("line"),
+        "line-2":  token("line-2"),
+        ink:       token("ink"),
+        "ink-2":   token("ink-2"),
+        "ink-3":   token("ink-3"),
+        // The primary. Used for Astralis itself, focus, and primary action.
+        violet:    token("violet"),
+        "violet-2":token("violet-2"),
+        // Presence and liveness only. Never decorative.
+        cyan:      token("cyan"),
+        // Care, caution, and the crisis card. Warm, never alarming red.
+        amber:     token("amber"),
       },
       fontFamily: {
-        // Serif for what the agent writes -- it should read as considered
-        // prose, not as machine output. Sans for chrome. Mono for metadata.
-        serif: ["var(--font-serif)", "Georgia", "serif"],
-        sans:  ["var(--font-sans)", "system-ui", "sans-serif"],
-        mono:  ["var(--font-mono)", "ui-monospace", "monospace"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       maxWidth: {
-        // ~62 characters at the body size. Longer lines measurably hurt
+        // ~62 characters at the reply size. Longer lines measurably hurt
         // comprehension, and this app exists to be read carefully.
         measure: "34rem",
-        reading: "46rem",
+        reading: "44rem",
       },
       keyframes: {
-        rise: {
-          from: { opacity: "0", transform: "translateY(6px)" },
-          to:   { opacity: "1", transform: "none" },
-        },
-        shimmer: {
-          "0%, 100%": { opacity: "0.35" },
-          "50%":      { opacity: "0.8" },
-        },
+        rise:   { from: { opacity: "0", transform: "translateY(8px)" },
+                  to:   { opacity: "1", transform: "none" } },
+        fade:   { from: { opacity: "0" }, to: { opacity: "1" } },
+        pulse2: { "0%,100%": { opacity: "1", transform: "scale(1)" },
+                  "50%":     { opacity: ".45", transform: "scale(.82)" } },
+        sweep:  { "0%": { backgroundPosition: "-160% 0" },
+                  "100%": { backgroundPosition: "260% 0" } },
+        caret:  { "0%,45%": { opacity: "1" }, "55%,100%": { opacity: "0" } },
       },
       animation: {
-        rise: "rise 240ms cubic-bezier(0.2, 0.6, 0.2, 1) both",
-        shimmer: "shimmer 1.6s ease-in-out infinite",
+        rise:   "rise 240ms cubic-bezier(.2,.6,.2,1) both",
+        fade:   "fade 180ms ease-out both",
+        pulse2: "pulse2 2.4s ease-in-out infinite",
+        sweep:  "sweep 2.1s ease-in-out infinite",
+        caret:  "caret 1.1s step-end infinite",
       },
+      transitionTimingFunction: { swift: "cubic-bezier(.2,.6,.2,1)" },
     },
   },
   plugins: [],

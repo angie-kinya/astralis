@@ -2,21 +2,31 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const MAX = 4000; // must match the `max=4000` binding on the Go handler
+import { IconSend } from "@/components/icons";
 
+/**
+ * The composer carries the editor metaphor: a mono caret, mono input, and a
+ * hint line that reads like a status bar. It is the control people touch most,
+ * so it is the one that most needs to feel like an instrument.
+ */
 export default function Composer({
-  onSend, disabled,
-}: { onSend: (text: string) => void; disabled: boolean }) {
+  onSend, disabled, placeholder = "What has work been like lately?", max = 4000,
+}: {
+  onSend: (text: string) => void;
+  disabled: boolean;
+  placeholder?: string;
+  max?: number;
+}) {
   const [draft, setDraft] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  // Grow with the content up to a ceiling, then scroll. Fixed-height boxes
-  // punish exactly the long, careful messages this app wants to receive.
+  // Grow with content up to a ceiling, then scroll. A fixed-height box
+  // punishes exactly the long, careful messages this app wants to receive.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "0px";
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [draft]);
 
   function submit() {
@@ -26,38 +36,42 @@ export default function Composer({
     onSend(text);
   }
 
-  const remaining = MAX - draft.length;
+  const left = max - draft.length;
 
   return (
-    <div className="rounded-xl border border-line bg-surface transition-colors
-                    focus-within:border-line-strong">
-      <textarea
-        ref={ref}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value.slice(0, MAX))}
-        onKeyDown={(e) => {
-          // Enter sends; Shift+Enter is a newline. People writing three
-          // paragraphs about their job need the newline to be easy.
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
-        }}
-        rows={1}
-        disabled={disabled}
-        aria-label="Your message"
-        placeholder="What has work been like lately?"
-        className="block w-full resize-none bg-transparent px-4 pb-2 pt-3.5 text-[0.9375rem]
-                   leading-relaxed text-ink outline-none placeholder:text-ink-3
-                   disabled:opacity-50"
-      />
+    <div className="rounded-xl border border-line bg-surface transition-colors duration-150
+                    ease-swift focus-within:border-violet/55">
+      <div className="flex gap-2.5 px-3.5 pt-3">
+        <span className="caret mt-[.15rem] select-none text-[.9375rem]" aria-hidden>›</span>
+        <textarea
+          ref={ref}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.slice(0, max))}
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter is a newline. People writing three
+            // paragraphs about their job need the newline to be easy.
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+          }}
+          rows={1}
+          disabled={disabled}
+          aria-label="Your message"
+          placeholder={placeholder}
+          className="min-w-0 flex-1 resize-none bg-transparent font-sans text-[.9375rem]
+                     leading-[1.7] text-ink outline-none placeholder:text-ink-3/70
+                     disabled:opacity-50"
+        />
+      </div>
 
-      <div className="flex items-center justify-between gap-3 px-3 pb-3 pt-1">
-        <p className="font-mono text-[0.6875rem] text-ink-3">
-          {remaining < 300
-            ? <span className={remaining < 50 ? "text-signal" : ""}>{remaining} left</span>
-            : <><kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift</kbd>+<kbd className="font-sans">Enter</kbd> for a new line</>}
+      <div className="flex items-center justify-between gap-3 px-3 pb-2.5 pt-1.5">
+        <p className="font-mono text-[.625rem] text-ink-3">
+          {left < 300
+            ? <span className={left < 50 ? "text-amber" : ""}>{left} characters left</span>
+            : <>enter to send · shift+enter for a new line</>}
         </p>
-        <button className="btn-primary !px-3.5 !py-2" onClick={submit}
-                disabled={disabled || !draft.trim()}>
-          Send
+        <button onClick={submit} disabled={disabled || !draft.trim()}
+                aria-label="Send"
+                className="btn-primary !gap-1.5 !px-3 !py-1.5">
+          <IconSend className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>

@@ -2,115 +2,148 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --------------------------------------------------------------------------
+/* ==========================================================================
    Tokens.
 
-   Dark is the default because most of these conversations happen late.
-   Light is a real theme, not an afterthought: someone journalling at 08:00
-   on a bright morning should not be handed a black screen.
-   -------------------------------------------------------------------------- */
+   Dark is the default: most of these conversations happen late, and the
+   product should feel like an instrument you switched on, not a document you
+   opened. Light is a real second theme, not an inversion — someone writing at
+   08:00 in Nairobi sun should not be handed a black screen.
+
+   Three hues, each with exactly one job:
+     violet  Astralis itself, focus, primary action
+     cyan    presence and liveness — who is here, what is live. Never decorative.
+     amber   care and caution. The crisis card. Warm, never an alarm red.
+   ========================================================================== */
 @layer base {
   :root {
-    --ground:       10  9  16;
-    --surface:      18  17  27;
-    --raised:       26  24  38;
-    --line:         38  35  54;
-    --line-strong:  55  50  77;
-    --ink:         236 234 245;
-    --ink-2:       165 160 188;
-    --ink-3:       111 106 136;
-    --accent:      139 123 240;
-    --accent-ink:   10   9  16;
-    --signal:      224 164  88;
+    --bg:        8   7  14;
+    --surface:  17  15  27;
+    --raised:   26  23  42;
+    --line:     38  33  60;
+    --line-2:   56  48  86;
+    --ink:     237 234 247;
+    --ink-2:   166 159 192;
+    --ink-3:   111 104 137;
+    --violet:  139  92 246;
+    --violet-2:167 139 250;
+    --cyan:     34 211 238;
+    --amber:   224 164  88;
 
-    --halo-a: rgba(139, 123, 240, 0.10);
-    --halo-b: rgba(90, 120, 220, 0.07);
+    --halo-1: rgba(139, 92, 246, .13);
+    --halo-2: rgba(34, 211, 238, .06);
+    --grid:   rgba(139, 92, 246, .045);
   }
 
   [data-theme="light"] {
-    --ground:      251 250 248;
-    --surface:     255 255 255;
-    --raised:      242 240 236;
-    --line:        227 223 216;
-    --line-strong: 200 194 184;
-    --ink:          26  24  34;
-    --ink-2:        87  83 107;
-    --ink-3:       138 133 153;
-    --accent:       91  75 214;
-    --accent-ink:  255 255 255;
-    --signal:      150  90  20;
+    --bg:      250 249 252;
+    --surface: 255 255 255;
+    --raised:  243 241 249;
+    --line:    229 225 239;
+    --line-2:  205 198 226;
+    --ink:      22  19  31;
+    --ink-2:    87  82 107;
+    --ink-3:   138 132 158;
+    --violet:  109  63 224;
+    --violet-2:124  58 237;
+    --cyan:     14 140 168;
+    --amber:   178 106  31;
 
-    --halo-a: rgba(91, 75, 214, 0.06);
-    --halo-b: rgba(120, 140, 220, 0.05);
+    --halo-1: rgba(109, 63, 224, .07);
+    --halo-2: rgba(14, 140, 168, .04);
+    --grid:   rgba(109, 63, 224, .04);
   }
 
   html { -webkit-text-size-adjust: 100%; }
 
   body {
-    @apply bg-ground text-ink antialiased;
-    /* Two very soft light sources rather than a gradient wash. At 6-10%
-       opacity they read as depth, not decoration. */
+    @apply bg-bg text-ink antialiased;
+    /* Two soft light sources plus a barely-there grid. At these opacities the
+       grid reads as depth and precision, not as decoration — which is the
+       difference between "futuristic" and "sci-fi wallpaper". */
     background-image:
-      radial-gradient(58rem 38rem at 12% -12%, var(--halo-a), transparent 62%),
-      radial-gradient(46rem 32rem at 96% 4%,  var(--halo-b), transparent 58%);
+      radial-gradient(52rem 34rem at 14% -10%, var(--halo-1), transparent 62%),
+      radial-gradient(40rem 28rem at 92% 6%,  var(--halo-2), transparent 58%),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: auto, auto, 46px 46px, 46px 46px;
     background-attachment: fixed;
-    font-feature-settings: "cv05" 1, "ss01" 1;
   }
 
-  ::selection { @apply bg-accent/25; }
+  ::selection { @apply bg-violet/30; }
 
-  /* Keyboard users get a visible ring; pointer users never see it. */
   *:focus-visible {
-    @apply outline-none ring-2 ring-accent ring-offset-2;
-    --tw-ring-offset-color: rgb(var(--ground));
+    @apply outline-none ring-2 ring-violet ring-offset-2;
+    --tw-ring-offset-color: rgb(var(--bg));
   }
 
-  /* Scrollbars that do not shout. */
-  * { scrollbar-width: thin; scrollbar-color: rgb(var(--line-strong)) transparent; }
+  * { scrollbar-width: thin; scrollbar-color: rgb(var(--line-2)) transparent; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb {
-    background: rgb(var(--line-strong)); border-radius: 99px;
+    background: rgb(var(--line-2)); border-radius: 99px;
     border: 3px solid transparent; background-clip: content-box;
   }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(var(--ink-3)); background-clip: content-box; }
 }
 
 @layer components {
+  /* ---------------------------------------------------------------- buttons */
   .btn {
     @apply inline-flex select-none items-center justify-center gap-2 rounded-lg
-           px-4 py-2.5 text-[0.8125rem] font-medium tracking-[-0.01em]
-           transition-[background-color,color,border-color,transform] duration-150
-           active:translate-y-px
+           px-4 py-2.5 font-sans text-[.8125rem] font-medium tracking-[-.01em]
+           transition-all duration-150 ease-swift active:translate-y-px
            disabled:pointer-events-none disabled:opacity-40;
   }
-  .btn-primary { @apply btn bg-accent text-accent-ink hover:brightness-110; }
-  .btn-quiet   { @apply btn border border-line text-ink-2 hover:bg-raised hover:text-ink; }
-  .btn-danger  { @apply btn border border-signal/50 text-signal hover:bg-signal/10; }
+  .btn-primary {
+    @apply btn bg-violet text-white
+           shadow-[0_0_0_1px_rgb(var(--violet)/.5),0_8px_24px_-10px_rgb(var(--violet)/.7)]
+           hover:brightness-110;
+  }
+  .btn-quiet  { @apply btn border border-line text-ink-2 hover:border-line-2 hover:bg-raised hover:text-ink; }
+  .btn-danger { @apply btn border border-amber/45 text-amber hover:bg-amber/10; }
 
+  /* ---------------------------------------------------------------- surfaces */
   .card { @apply rounded-xl border border-line bg-surface; }
 
-  /* The eyebrow used above section headings and beside the wordmark. */
-  .eyebrow {
-    @apply font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-ink-3;
+  /* The structural voice: mono, uppercase, tracked. Used for every label,
+     status, and piece of metadata in the product. */
+  .label {
+    @apply font-mono text-[.625rem] uppercase tracking-[.16em] text-ink-3;
+  }
+  .tag {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line
+           px-2 py-0.5 font-mono text-[.625rem] uppercase tracking-[.12em] text-ink-3;
   }
 
-  /* Assistant prose. Serif, generous leading, real paragraph rhythm. */
-  .prose-astralis {
-    @apply font-serif text-[1.0625rem] leading-[1.72] text-ink;
-  }
-  .prose-astralis > p + p { @apply mt-4; }
-  .prose-astralis strong   { @apply font-semibold; }
-  .prose-astralis a        { @apply text-accent underline decoration-accent/40 underline-offset-2; }
-  .prose-astralis ul       { @apply mt-3 space-y-1.5 pl-5; list-style: disc; }
+  /* Astralis's own voice. Sans, generous leading, real paragraph rhythm. */
+  .reply { @apply font-sans text-[.9375rem] leading-[1.78] text-ink; }
+  .reply > p + p { @apply mt-4; }
+  .reply strong  { @apply font-semibold text-ink; }
+  .reply a       { @apply text-violet-2 underline decoration-violet/40 underline-offset-2; }
 
-  .hairline { @apply h-px w-full bg-line; }
+  .hair { @apply h-px w-full bg-line; }
+
+  /* Presence. Cyan is only ever used for this and for live state. */
+  .dot     { @apply h-1.5 w-1.5 shrink-0 rounded-full; }
+  .dot-on  { @apply dot animate-pulse2 bg-cyan shadow-[0_0_8px_rgb(var(--cyan)/.8)]; }
+  .dot-off { @apply dot bg-ink-3/50; }
+
+  /* The composer caret: a terminal affordance that says "type here" without
+     a placeholder shouting it. */
+  .caret { @apply font-mono text-violet animate-caret; }
+
+  .skel {
+    @apply rounded-full;
+    background: linear-gradient(90deg,
+      rgb(var(--line)) 0%, rgb(var(--line-2)) 42%, rgb(var(--line)) 84%);
+    background-size: 220% 100%;
+    @apply animate-sweep;
+  }
 }
 
-/* Honour an OS-level request for less motion. Not optional. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important; scroll-behavior: auto !important;
   }
 }

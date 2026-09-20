@@ -41,9 +41,18 @@ type User struct {
 	Email          string
 	DisplayName    string
 	ConsentVersion *string
+
+	// Handle is the anonymous name other users see. Nil until onboarding.
+	// Email and DisplayName come from GitHub and never leave this service.
+	Handle    *string
+	PeerOptIn bool
 }
 
 func (u User) HasConsented() bool { return u.ConsentVersion != nil }
+
+// HasHandle reports whether onboarding is complete. Chat is gated on it: the
+// agent asks what to call you before it asks anything else.
+func (u User) HasHandle() bool { return u.Handle != nil && *u.Handle != "" }
 
 // Message and Chunk cross the API boundary, so they carry explicit JSON tags.
 // Without them Go marshals the field names verbatim and the frontend ends up
@@ -75,10 +84,12 @@ func (s *Store) UpsertUser(ctx context.Context, externalID, email, name string) 
 		VALUES ($1, $2, $3)
 		ON CONFLICT (external_id) DO UPDATE
 		SET email = EXCLUDED.email, display_name = EXCLUDED.display_name
-		RETURNING id, external_id, email, COALESCE(display_name,''), consent_version`
+		RETURNING id, external_id, email, COALESCE(display_name,''),
+		          consent_version, handle, peer_opt_in`
 	var u User
 	err := s.pool.QueryRow(ctx, q, externalID, email, name).
-		Scan(&u.ID, &u.ExternalID, &u.Email, &u.DisplayName, &u.ConsentVersion)
+		Scan(&u.ID, &u.ExternalID, &u.Email, &u.DisplayName,
+			&u.ConsentVersion, &u.Handle, &u.PeerOptIn)
 	return u, err
 }
 

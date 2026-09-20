@@ -8,7 +8,6 @@ import (
 	"astralis/gateway/internal/rag"
 	"astralis/gateway/internal/store"
 
-	"github.com/hibiken/async"
 	"github.com/hibiken/asynq"
 )
 
@@ -16,11 +15,11 @@ const TypeSummariseSession = "session:summarise"
 
 type SummarisePayload struct {
 	SessionID string `json:"session_id"`
-	UserID string `json:"user_id"`
+	UserID    string `json:"user_id"`
 }
 
 func NewSummariseTask(sessionID, userID string) (*asynq.Task, error) {
-	b, err := json.Marshal(SummarisePayload{SessionID: sessionID, UserID: :userID})
+	b, err := json.Marshal(SummarisePayload{SessionID: sessionID, UserID: userID})
 	if err != nil {
 		return nil, err
 	}

@@ -18,9 +18,9 @@ type Embedder interface {
 
 type OpenAI struct {
 	apiKey string
-	model string
-	dim int
-	http *http.Client
+	model  string
+	dim    int
+	http   *http.Client
 }
 
 func NewOpenAI(apiKey, model string, dim int) *OpenAI {
@@ -55,7 +55,7 @@ func (o *OpenAI) Embed(ctx context.Context, texts []string) ([][]float32, error)
 
 	var out struct {
 		Data []struct {
-			Index int `json:"index"`
+			Index     int       `json:"index"`
 			Embedding []float32 `json:"embedding"`
 		} `json:"data"`
 	}
@@ -64,7 +64,7 @@ func (o *OpenAI) Embed(ctx context.Context, texts []string) ([][]float32, error)
 	}
 
 	vecs := make([][]float32, len(texts))
-	for _, := range out.Data {
+	for _, d := range out.Data {
 		if d.Index >= 0 && d.Index < len(vecs) {
 			vecs[d.Index] = d.Embedding
 		}

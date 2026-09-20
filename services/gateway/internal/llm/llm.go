@@ -21,7 +21,7 @@ type Client interface {
 }
 
 type Anthropic struct {
-	apikey string
+	apiKey string
 	model  string
 	http   *http.Client
 }

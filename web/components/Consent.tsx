@@ -39,6 +39,14 @@ const SECTIONS = [
     p: "A filter runs before the model sees your message. If it detects language suggesting self-harm or crisis, the model is never called: you get a fixed response with real helplines, and that message is excluded from the conversation memory. A flag is recorded so the filter can be checked for accuracy.",
   },
   {
+    h: "Talking to other people",
+    p: "You can opt in to a circle of other people using Astralis. If you do, they see only the name you chose \u2014 never your email or GitHub name. Messages between you are stored so they can be delivered when someone is offline. Peer support is not crisis support, and the same safety filter applies to those messages too. You can leave at any time.",
+  },
+  {
+    h: "Your notes",
+    p: "The notepad is private in a specific technical sense: nothing written there is embedded, retrieved, summarised, or sent to any model. It is stored so you can come back to it, and it is deleted with everything else if you ask.",
+  },
+  {
     h: "Your rights",
     p: "You can delete your account and every message, summary, and rating permanently, at any time, from the 'Your data' page. Deletion is immediate and irreversible. You can stop using Astralis at any point without giving a reason.",
   },

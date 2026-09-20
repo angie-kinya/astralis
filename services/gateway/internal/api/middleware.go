@@ -38,6 +38,12 @@ func (s *Server) resolveUser() gin.HandlerFunc {
 			return
 		}
 		c.Set(userKey, u)
+
+		// Presence, best effort. Deliberately not checked: "who is online" is
+		// a nicety and must never be able to fail a real request.
+		if err := s.store.TouchPresence(c.Request.Context(), u.ID); err != nil {
+			slog.Debug("touch presence", "err", err)
+		}
 		c.Next()
 	}
 }

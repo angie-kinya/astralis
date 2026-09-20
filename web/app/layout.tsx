@@ -1,15 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
+import { JetBrains_Mono, Sora } from "next/font/google";
 
 import "./globals.css";
 
-// next/font self-hosts these at build time: no runtime request to Google, no
-// third party watching who reads what.
-const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const serif = Newsreader({
-  subsets: ["latin"], variable: "--font-serif", display: "swap", style: ["normal", "italic"],
-});
+// Self-hosted at build time: no runtime request to Google, nobody outside this
+// deployment learns who is reading what.
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
+const sans = Sora({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Astralis",
@@ -19,8 +16,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0A0910" },
-    { media: "(prefers-color-scheme: light)", color: "#FBFAF8" },
+    { media: "(prefers-color-scheme: dark)",  color: "#08070E" },
+    { media: "(prefers-color-scheme: light)", color: "#FAF9FC" },
   ],
 };
 
@@ -37,9 +34,9 @@ const THEME_BOOTSTRAP = `
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en-GB" data-theme="dark" suppressHydrationWarning
-          className={`${sans.variable} ${serif.variable} ${mono.variable}`}>
+          className={`${mono.variable} ${sans.variable}`}>
       <head><script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} /></head>
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh font-sans">{children}</body>
     </html>
   );
 }

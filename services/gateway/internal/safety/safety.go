@@ -119,8 +119,10 @@ type HTTPClassifier struct {
 }
 
 // Returns nil -- not an error -- when unconfigured, so main can write:
-//   var clf safety.Classifier
-//   if h := safety.NewHTTPClassifier(url); h != nil { clf = h }
+//
+//	var clf safety.Classifier
+//	if h := safety.NewHTTPClassifier(url); h != nil { clf = h }
+//
 // and the filter degrades to rules-only with no branching anywhere else.
 func NewHTTPClassifier(url string) *HTTPClassifier {
 	if url == "" {

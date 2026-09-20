@@ -34,6 +34,7 @@ export class ApiError extends Error {
   }
   get needsConsent() { return this.code === "consent_required"; }
   get rateLimited() { return this.status === 429; }
+  get handleTaken() { return this.code === "handle_taken"; }
 }
 
 export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
@@ -91,6 +92,32 @@ export type Me = {
   displayName: string;
   consented: boolean;
   consentVersion: string;
+  /** The anonymous name. Empty string means onboarding is not finished. */
+  handle: string;
+  peerOptIn: boolean;
+};
+
+export type Peer = {
+  id: string;
+  handle: string;
+  online: boolean;
+  lastSeen: string;
+  unread: number;
+};
+
+export type PeerMessage = {
+  id: string;
+  mine: boolean;
+  body: string;
+  createdAt: string;
+  readAt: string | null;
+};
+
+export type Note = {
+  id: string;
+  title: string;
+  body: string;
+  updatedAt: string;
 };
 
 export type SessionSummary = {

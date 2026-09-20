@@ -63,6 +63,11 @@ func (s *Server) Router() *gin.Engine {
 		v1.POST("/consent", s.handleConsent)
 		v1.DELETE("/me", s.handleDeleteMe)
 
+		// Onboarding. Behind consent but NOT behind a handle, because this is
+		// the endpoint that creates the handle.
+		v1.POST("/me/handle", s.requireConsent(), s.handleSetHandle)
+		v1.POST("/me/peer-opt-in", s.requireConsent(), s.handlePeerOptIn)
+
 		// Everything that stores conversation content sits behind consent as a rate limit.
 		// Enforcing it here structurally beats trusting six handlers to each remember.
 		c := v1.Group("", s.requireConsent(), s.rateLimit())
@@ -72,6 +77,20 @@ func (s *Server) Router() *gin.Engine {
 		c.POST("/sessions/:id/messages", s.handleSendMessage)
 		c.POST("/sessions/:id/end", s.handleEndSession)
 		c.POST("/feedback", s.handleFeedback)
+
+		// The circle. Peer messages run through the same safety filter as the
+		// agent path -- see handleSendPeerMessage for why that matters more
+		// here rather than less.
+		c.GET("/peers", s.handleListPeers)
+		c.GET("/peers/unread", s.handleUnread)
+		c.GET("/peers/:id/messages", s.handleGetConversation)
+		c.POST("/peers/:id/messages", s.handleSendPeerMessage)
+
+		// Notes never reach a model, an embedder, or the retrieval index.
+		c.GET("/notes", s.handleListNotes)
+		c.POST("/notes", s.handleCreateNote)
+		c.PUT("/notes/:id", s.handleSaveNote)
+		c.DELETE("/notes/:id", s.handleDeleteNote)
 	}
 	return r
 }

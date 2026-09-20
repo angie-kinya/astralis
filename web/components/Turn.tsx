@@ -16,45 +16,46 @@ export type Turn = {
 };
 
 /**
- * The deliberate departure from every other chat UI: the assistant does not
- * get a bubble.
+ * The deliberate departure from every other chat UI: nobody gets a bubble.
  *
- * Bubbles say "instant message". This app wants its replies read slowly, so
- * assistant turns are set as prose at a reading measure with a hairline rule,
- * the way a considered note would be. Only the person's own words are bubbled,
- * because those genuinely are short utterances.
+ * Instead each turn is attributed by a mono label — `you ›` / `astralis ›` —
+ * and the content sits under it at a reading measure. It reads like a
+ * transcript or a log, which is both more honest about what this is and far
+ * better suited to replies that are meant to be read slowly rather than
+ * skimmed and answered in two seconds.
  */
-export default function TurnView({ turn }: { turn: Turn }) {
-  if (turn.role === "user") {
-    return (
-      <div className="flex animate-rise justify-end">
-        <div className="max-w-measure rounded-xl rounded-br-sm border border-line bg-raised
-                        px-4 py-3 text-[0.9375rem] leading-relaxed text-ink">
-          <p className="whitespace-pre-wrap">{turn.content}</p>
-        </div>
-      </div>
-    );
-  }
-
+export default function TurnView({ turn, handle }: { turn: Turn; handle: string }) {
   if (turn.crisis) return <CrisisNotice text={turn.content} />;
 
-  return (
-    <article className="animate-rise border-l border-line pl-5 sm:pl-6">
-      <div className="prose-astralis max-w-reading">
-        {paragraphs(turn.content).map((p, i) => (
-          <p key={i} className="whitespace-pre-wrap">{renderBold(p)}</p>
-        ))}
-      </div>
+  const mine = turn.role === "user";
 
-      {!!turn.sources?.length && <SourceList sources={turn.sources} />}
-      {turn.recommendationId && <Feedback recommendationId={turn.recommendationId} />}
+  return (
+    <article className={`animate-rise border-l pl-4 sm:pl-5 ${mine ? "border-line" : "border-violet/45"}`}>
+      <p className="mb-2 font-mono text-[.625rem] uppercase tracking-[.14em]">
+        <span className={mine ? "text-ink-3" : "text-violet-2"}>{mine ? handle : "astralis"}</span>
+        <span className="text-ink-3/50"> ›</span>
+      </p>
+
+      {mine ? (
+        <p className="max-w-reading whitespace-pre-wrap font-sans text-[.9375rem]
+                      leading-[1.7] text-ink-2">{turn.content}</p>
+      ) : (
+        <div className="reply max-w-reading">
+          {paragraphs(turn.content).map((p, i) => (
+            <p key={i} className="whitespace-pre-wrap">{renderBold(p)}</p>
+          ))}
+        </div>
+      )}
+
+      {!mine && !!turn.sources?.length && <SourceList sources={turn.sources} />}
+      {!mine && turn.recommendationId && <Feedback recommendationId={turn.recommendationId} />}
     </article>
   );
 }
 
 /**
  * The model writes plain prose with occasional **bold**. Handling that one
- * case by hand avoids pulling in a markdown renderer — and with it, an
+ * case by hand avoids pulling in a markdown renderer, and with it a
  * dangerouslySetInnerHTML call sitting directly downstream of an LLM. Model
  * output is untrusted input; it never becomes HTML here.
  */

@@ -47,7 +47,7 @@ func NewEngine(s *store.Store, e embed.Embedder, l llm.Client, topK int) *Engine
 type Answer struct {
 	Text     string
 	ChunkIDs []string
-	Surces   []store.Chunk
+	Sources  []store.Chunk
 }
 
 // answer runs one full retrieval-augmented turn.

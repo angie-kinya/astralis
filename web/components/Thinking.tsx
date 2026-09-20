@@ -1,23 +1,23 @@
 /**
- * Not three bouncing dots. A slowly breathing skeleton at the same measure and
- * leading as the prose that will replace it, so the layout does not jump and
- * the wait feels like something being written rather than something buffering.
+ * Not three bouncing dots. A skeleton at the same measure and leading as the
+ * prose that will replace it, so the layout does not jump — and a mono status
+ * line that names what is actually happening, because "searching the library"
+ * is true and more reassuring than an animation that means nothing.
  */
 export default function Thinking() {
   return (
-    <div className="border-l border-line pl-5 sm:pl-6" role="status" aria-live="polite">
+    <div className="animate-fade border-l border-violet/45 pl-4 sm:pl-5" role="status" aria-live="polite">
+      <p className="mb-3 font-mono text-[.625rem] uppercase tracking-[.14em] text-violet-2">
+        astralis <span className="text-ink-3/50">›</span>
+      </p>
       <span className="sr-only">Astralis is composing a reply</span>
-      <div className="max-w-reading space-y-3" aria-hidden>
-        {["92%", "100%", "68%"].map((w, i) => (
-          <div
-            key={i}
-            className="h-[0.6875rem] animate-shimmer rounded-full bg-line"
-            style={{ width: w, animationDelay: `${i * 180}ms` }}
-          />
+      <div className="max-w-reading space-y-2.5" aria-hidden>
+        {["94%", "100%", "72%"].map((w, i) => (
+          <div key={i} className="skel h-[.625rem]" style={{ width: w, animationDelay: `${i * 160}ms` }} />
         ))}
       </div>
-      <p className="mt-4 font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-ink-3">
-        Searching the library
+      <p className="mt-3.5 font-mono text-[.625rem] uppercase tracking-[.12em] text-ink-3">
+        searching the library
       </p>
     </div>
   );

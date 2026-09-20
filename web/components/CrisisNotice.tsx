@@ -3,26 +3,23 @@ import { paragraphs } from "@/lib/format";
 /**
  * Design ethics live here.
  *
- * This is not an error state and it must not look like one: no red, no alarm
- * icon, no shake. A person who has just written the hardest sentence of their
- * week should feel handed a card by someone who cares, not caught by a filter.
+ * This is not an error state and must not look like one: no red, no alarm
+ * icon, no shake. Someone who has just written the hardest sentence of their
+ * week should feel handed a card by a person who cares, not caught by a filter.
  *
- * It is also labelled honestly. Saying "fixed response — the model was not
- * involved" is more respectful than pretending an agent chose these words, and
- * it is the literal truth about what happened in the request.
+ * It is labelled honestly too. Saying "written by a person, not generated" is
+ * more respectful than pretending an agent chose these words, and it is the
+ * literal truth about what happened in that request.
  */
 export default function CrisisNotice({ text }: { text: string }) {
   return (
-    <section
-      role="note"
-      aria-label="Support resources"
-      className="animate-rise rounded-xl border border-signal/30 bg-signal/[0.06] p-5 sm:p-6"
-    >
-      <p className="font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-signal">
-        Fixed response · written by a person, not generated
+    <section role="note" aria-label="Support resources"
+             className="animate-rise rounded-xl border border-amber/30 bg-amber/[.06] p-5 sm:p-6">
+      <p className="font-mono text-[.625rem] uppercase tracking-[.14em] text-amber">
+        fixed response · written by a person, not generated
       </p>
 
-      <div className="prose-astralis mt-4 text-[1rem]">
+      <div className="reply mt-4">
         {paragraphs(text).map((p, i) => (
           <p key={i} className="whitespace-pre-wrap">{renderBold(p)}</p>
         ))}
