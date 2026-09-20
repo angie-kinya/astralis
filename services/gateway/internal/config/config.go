@@ -28,6 +28,8 @@ type Config struct {
 
 	SafetyClassifierURL string
 	SafetyThreshold     float64
+
+	RateLimitPerMin int
 }
 
 func Load() (*Config, error) {
@@ -59,6 +61,12 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("SAFETY_THRESHOLD must be a float: %w", err)
 	}
 	c.SafetyThreshold = th
+
+	rl, err := strconv.Atoi(get("RATE_LIMIT_PER_MIN", "20"))
+	if err != nil {
+		return nil, fmt.Errorf("RATE_LIMIT_PER_MIN must be an integer: %w", err)
+	}
+	c.RateLimitPerMin = rl
 
 	for name, v := range map[string]string{
 		"DATABASE_URL":       c.DatabaseURL,
