@@ -231,3 +231,50 @@ func (s *Store) FlagPeerCrisis(ctx context.Context, peerMessageID, rule string, 
 		VALUES ($1,$2,$3)`, peerMessageID, rule, score)
 	return err
 }
+
+// ------------------------------------------------------------------ batch summary
+
+// PendingSummary identifies a conversation that has gone quiet without being
+// summarised.
+type PendingSummary struct {
+	SessionID string
+	UserID    string
+}
+
+// SessionsNeedingSummary finds conversations worth remembering that nothing
+// has remembered yet.
+//
+// This exists so summarisation can run as a scheduled batch with no queue and
+// no Redis at all — which is what makes a genuinely free deployment possible.
+// The queue path (cmd/worker) is still the better design under load; this is
+// the same work, derived from state rather than from an event.
+//
+// Deriving from state has one real advantage: a summary missed because the
+// browser never fired `pagehide`, or because Redis was down, is picked up on
+// the next run instead of being lost.
+func (s *Store) SessionsNeedingSummary(ctx context.Context, idleFor time.Duration, limit int) ([]PendingSummary, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT s.id, s.user_id
+		FROM sessions s
+		LEFT JOIN session_summaries ss ON ss.session_id = s.id
+		WHERE ss.id IS NULL
+		  AND s.last_activity_at < now() - $1::interval
+		  AND (SELECT count(*) FROM messages m
+		       WHERE m.session_id = s.id AND m.crisis_flagged = false) >= 4
+		ORDER BY s.last_activity_at ASC
+		LIMIT $2`, idleFor, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []PendingSummary{}
+	for rows.Next() {
+		var p PendingSummary
+		if err := rows.Scan(&p.SessionID, &p.UserID); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
