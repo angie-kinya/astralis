@@ -1,0 +1,15 @@
+# Install with:  sudo cp /opt/astralis/deploy/crontab /etc/cron.d/astralis
+# Runs as the `deploy` user. Times are UTC (the droplet's clock); 03:00 UTC is
+# 06:00 in Nairobi.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Episodic memory for conversations that have gone quiet. Also purges expired
+# sign-in codes and sessions.
+*/20 * * * * deploy cd /opt/astralis/deploy && docker compose --profile jobs run --rm -T summarise >> /home/deploy/logs/summarise.log 2>&1
+
+# The self-research loop: Sundays 03:00 UTC.
+0 3 * * 0    deploy cd /opt/astralis/deploy && docker compose --profile jobs run --rm -T research >> /home/deploy/logs/research.log 2>&1
+
+# Nightly database backup, 01:30 UTC.
+30 1 * * *   deploy /opt/astralis/deploy/backup.sh >> /home/deploy/logs/backup.log 2>&1

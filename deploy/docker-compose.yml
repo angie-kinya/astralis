@@ -1,0 +1,117 @@
+# Astralis production stack — one DigitalOcean droplet, 2 GB.
+#
+#   internet ── :443 ── caddy ─┬─ /api/*, /healthz ──> api ──┬──> postgres
+#                              └─ everything else ──> web    └──> classifier
+#
+# Only Caddy publishes a port. Postgres, the API, the web server and the
+# classifier are reachable solely on this compose network. That matters more
+# than usual here: Docker writes its own iptables rules, so a published port
+# BYPASSES ufw. The only safe database port is one that is never published.
+#
+# Run from this directory:  docker compose up -d
+# Images come from GitHub Container Registry, built by .github/workflows/deploy.yml.
+
+name: astralis
+
+services:
+  postgres:
+    image: docker.io/pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-astralis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-astralis}
+    # Sized for 2 GB shared with four other containers. Defaults assume a
+    # dedicated machine and would over-commit memory.
+    command: >
+      postgres -c shared_buffers=192MB -c effective_cache_size=512MB
+               -c work_mem=8MB -c maintenance_work_mem=64MB -c max_connections=40
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 20
+    mem_limit: 700m
+
+  api:
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in deploy/.env}/astralis-api:${TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ENV: production
+      PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-astralis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-astralis}?sslmode=disable
+      SAFETY_CLASSIFIER_URL: http://classifier:8000
+      # Only the compose network may set X-Forwarded-For (that is Caddy).
+      TRUSTED_PROXIES: 172.16.0.0/12,10.0.0.0/8,192.168.0.0/16
+      REDIS_ADDR: ""
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      retries: 5
+    mem_limit: 256m
+
+  web:
+    image: ghcr.io/${GHCR_OWNER}/astralis-web:${TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 384m
+
+  classifier:
+    image: ghcr.io/${GHCR_OWNER}/astralis-classifier:${TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 320m
+
+  caddy:
+    image: docker.io/library/caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # TLS certificates — losing this means re-issuing
+      - caddy_config:/config
+    depends_on: [api, web]
+    mem_limit: 128m
+
+  # ------------------------------------------------------------ scheduled jobs
+  # Not started by `up`. Host cron runs them with `docker compose run --rm`.
+  summarise:
+    image: ghcr.io/${GHCR_OWNER}/astralis-api:${TAG:-latest}
+    profiles: [jobs]
+    entrypoint: ["/app/summarise"]
+    env_file: .env
+    environment:
+      ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-astralis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-astralis}?sslmode=disable
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  research:
+    image: ghcr.io/${GHCR_OWNER}/astralis-research:${TAG:-latest}
+    profiles: [jobs]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-astralis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-astralis}?sslmode=disable
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  announce:
+    image: ghcr.io/${GHCR_OWNER}/astralis-api:${TAG:-latest}
+    profiles: [jobs]
+    entrypoint: ["/app/announce"]
+    env_file: .env
+    environment:
+      ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-astralis}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-astralis}?sslmode=disable
+    volumes: ["./notes:/notes:ro"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

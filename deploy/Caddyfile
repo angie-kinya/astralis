@@ -1,0 +1,41 @@
+# Caddy does three jobs here, all automatically:
+#   1. obtains and renews Let's Encrypt certificates for {$DOMAIN}
+#   2. redirects HTTP to HTTPS
+#   3. routes one public origin to two internal services
+#
+# One origin is the point. The browser never talks to the API directly, so the
+# session cookie is first-party and there is no CORS policy to get wrong.
+#
+# There is deliberately no `log` directive. Caddy writes no access log unless
+# asked, and an access log here would record every URL of every conversation.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# /api/* goes straight to Go — never through Next.js — so a slow LLM reply
+	# is not cut off by a proxy timeout in the middle of the chain.
+	@api path /api/* /healthz
+	handle @api {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
