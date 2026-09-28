@@ -22,7 +22,7 @@ function suggest() {
 }
 
 const LINES = [
-  "Before we start, I need something to call you.",
+  "You are in. Before anything else, I need something to call you.",
   "Pick anything — it does not have to mean anything, and it does not have to be your name. I would gently suggest it is not: other people here will see it, and you will say more honestly to me if what you say is not attached to who you are at work.",
   "You can change it later.",
 ];
@@ -114,7 +114,7 @@ export default function Onboarding({ onDone }: { onDone: (handle: string) => voi
 
           <p className="mt-6 max-w-measure font-mono text-[.6875rem] leading-relaxed text-ink-3">
             3–24 characters. Letters, numbers, spaces, hyphens, underscores.
-            Your GitHub name and email are never shown to anyone else.
+            Your email is never shown to anyone — this name is all anyone sees.
           </p>
         </div>
       )}

@@ -14,6 +14,7 @@ import (
 	"astralis/gateway/internal/config"
 	"astralis/gateway/internal/embed"
 	"astralis/gateway/internal/llm"
+	"astralis/gateway/internal/mail"
 	"astralis/gateway/internal/rag"
 	"astralis/gateway/internal/safety"
 	"astralis/gateway/internal/store"
@@ -25,6 +26,9 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	cfg, err := config.Load()
+	if err == nil {
+		err = cfg.ValidateAPI()
+	}
 	if err != nil {
 		slog.Error("config", "err", err)
 		os.Exit(1)
@@ -49,12 +53,25 @@ func main() {
 	}
 	filter := safety.NewFilter(clf, cfg.SafetyThreshold)
 
-	queue := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisAddr})
-	defer queue.Close()
+	// The queue is optional. On a single droplet there is no Redis, and
+	// cmd/summarise does the same work from cron.
+	var queue *asynq.Client
+	if cfg.RedisAddr != "" {
+		queue = asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisAddr})
+		defer queue.Close()
+	}
+
+	// Real email in production (ValidateAPI guarantees the key is present);
+	// codes printed to this terminal on a laptop.
+	var mailer mail.Sender = mail.Log{}
+	if cfg.ResendAPIKey != "" {
+		mailer = mail.NewResend(cfg.ResendAPIKey, cfg.MailFrom)
+	}
+	slog.Info("mail", "provider", map[bool]string{true: "resend", false: "log (dev only)"}[cfg.ResendAPIKey != ""])
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           api.NewServer(cfg, db, engine, filter, queue).Router(),
+		Handler:           api.NewServer(cfg, db, engine, filter, queue, mailer).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

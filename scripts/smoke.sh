@@ -2,104 +2,142 @@
 # Astralis end-to-end smoke test.
 #
 # Exercises every guarantee the system claims to make, against a running API.
-# It mints its own tokens from BACKEND_JWT_SECRET, so it needs no browser and
-# no GitHub login -- which is exactly what makes it runnable in CI later.
+# It signs in through the real email-code flow, reading the code from the
+# `devCode` field the API returns ONLY when started with AUTH_DEV_ECHO_CODE=true
+# — which config refuses in production. So run it against a local API:
 #
-#   ./scripts/smoke.sh                       # against localhost:8080
-#   API=https://api.astralis.example ./scripts/smoke.sh
+#   AUTH_DEV_ECHO_CODE=true AUTH_RATE_LIMIT_PER_MIN=500 make api     # terminal 1
+#   ./scripts/smoke.sh                                               # terminal 2
 #
-# It creates two users with @smoke.local emails and deletes them at the end.
+# Against production, use ./scripts/smoke.sh --public (unauthenticated checks only).
+#
+# Creates users with @smoke.local addresses and deletes them at the end.
 set -uo pipefail
 
 API="${API:-http://localhost:8080}"
 U="$API/api/v1"
 PASS=0; FAIL=0
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+J="Content-Type: application/json"
 
-[ -f .env ] && { set -a; . ./.env; set +a; }
-: "${BACKEND_JWT_SECRET:?set BACKEND_JWT_SECRET (or create .env)}"
-
-mint() {
-  python3 -c "
-import base64,hmac,hashlib,json,time,os,sys
-b=lambda x: base64.urlsafe_b64encode(x).rstrip(b'=').decode()
-h=b(json.dumps({'alg':'HS256','typ':'JWT'},separators=(',',':')).encode())
-p=b(json.dumps({'sub':sys.argv[1],'email':sys.argv[2],'name':sys.argv[3],
- 'iat':int(time.time()),'exp':int(time.time())+3600},separators=(',',':')).encode())
-s=b(hmac.new(os.environ['BACKEND_JWT_SECRET'].encode(),f'{h}.{p}'.encode(),hashlib.sha256).digest())
-print(f'{h}.{p}.{s}')" "$1" "$2" "$3"
-}
-
-# check <name> <expected-substring> <actual>
 check() {
   if [[ "$3" == *"$2"* ]]; then printf '  \033[32m✓\033[0m %s\n' "$1"; PASS=$((PASS+1))
-  else printf '  \033[31m✗\033[0m %s\n      expected: %s\n      actual:   %s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi
+  else printf '  \033[31m✗\033[0m %s\n      expected: %s\n      actual:   %s\n' "$1" "$2" "${3:0:300}"; FAIL=$((FAIL+1)); fi
+}
+absent() {  # check that $2 does NOT occur in $3
+  if [[ "$3" != *"$2"* ]]; then printf '  \033[32m✓\033[0m %s\n' "$1"; PASS=$((PASS+1))
+  else printf '  \033[31m✗\033[0m %s\n      leaked: %s\n' "$1" "$2"; FAIL=$((FAIL+1)); fi
 }
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 sec()  { printf '\n\033[1m%s\033[0m\n' "$1"; }
+field(){ python3 -c "import sys,json;print(json.load(sys.stdin).get('$1',''))"; }
 
-TA=$(mint smoke-a a@smoke.local "Smoke A"); TB=$(mint smoke-b b@smoke.local "Smoke B")
-A="Authorization: Bearer $TA"; B="Authorization: Bearer $TB"; J="Content-Type: application/json"
+# signin <jar> <email> [notify] -> signs in through the real two-step flow
+signin() {
+  local dev
+  dev=$(curl -s -X POST -H "$J" -d "{\"email\":\"$2\"}" "$U/auth/start" | field devCode)
+  if [ -z "$dev" ]; then
+    echo "  no devCode returned — start the API with AUTH_DEV_ECHO_CODE=true (development only)"; exit 1
+  fi
+  curl -s -c "$1" -X POST -H "$J" \
+    -d "{\"email\":\"$2\",\"code\":\"$dev\",\"notifyReleases\":${3:-false}}" "$U/auth/verify"
+}
 
-sec "health and auth"
-check "healthz responds"            '"status":"ok"'  "$(curl -s -m 5 "$API/healthz")"
-check "no token is rejected"        "401"            "$(code "$U/me")"
-check "garbage token is rejected"   "401"            "$(code -H 'Authorization: Bearer not.a.token' "$U/me")"
+sec "health"
+check "healthz responds" '"status":"ok"' "$(curl -s -m 5 "$API/healthz")"
+check "no cookie is rejected"      "401" "$(code "$U/me")"
+check "forged cookie is rejected"  "401" "$(code -b 'astralis_session=forged' "$U/me")"
+check "forged cookie is cleared"   "Max-Age=0" "$(curl -s -D - -o /dev/null -b 'astralis_session=forged' "$U/me")"
+[ "${1:-}" = "--public" ] && { printf '\n\033[1m%d passed, %d failed\033[0m\n' "$PASS" "$FAIL"; [ "$FAIL" -eq 0 ]; exit; }
 
-sec "consent gate"
-check "new user is not consented"   '"consented":false' "$(curl -s -H "$A" "$U/me")"
-check "sessions blocked pre-consent" "403"           "$(code -H "$A" "$U/sessions")"
-curl -s -X POST -H "$A" "$U/consent" >/dev/null
-curl -s -X POST -H "$B" "$U/consent" >/dev/null
-check "sessions open post-consent"  "200"            "$(code -H "$A" "$U/sessions")"
+sec "email validation"
+check "garbage email refused"      "400" "$(code -X POST -H "$J" -d '{"email":"not-an-email"}' "$U/auth/start")"
+check "display-name form refused"  "400" "$(code -X POST -H "$J" -d '{"email":"Eve <eve@smoke.local>"}' "$U/auth/start")"
 
-sec "identity"
-check "short handle rejected"       "400"            "$(code -X POST -H "$A" -H "$J" -d '{"handle":"ab"}' "$U/me/handle")"
-check "email-shaped handle rejected" "400"           "$(code -X POST -H "$A" -H "$J" -d '{"handle":"me@work.com"}' "$U/me/handle")"
-check "handle accepted"             '"handle"'       "$(curl -s -X POST -H "$A" -H "$J" -d '{"handle":"smokeharbour"}' "$U/me/handle")"
-check "duplicate handle refused"    "handle_taken"   "$(curl -s -X POST -H "$B" -H "$J" -d '{"handle":"smokeharbour"}' "$U/me/handle")"
-curl -s -X POST -H "$B" -H "$J" -d '{"handle":"smokesignal"}' "$U/me/handle" >/dev/null
+sec "one-time codes"
+curl -s -X POST -H "$J" -d '{"email":"guess@smoke.local"}' "$U/auth/start" > "$TMP/g"
+REAL=$(field devCode < "$TMP/g")
+check "code issued" "sent" "$(cat "$TMP/g")"
+WRONG=$(printf '%06d' $(( (10#$REAL + 1) % 1000000 )))
+check "wrong code refused" "invalid_code" \
+  "$(curl -s -X POST -H "$J" -d "{\"email\":\"guess@smoke.local\",\"code\":\"$WRONG\"}" "$U/auth/verify")"
+for _ in 1 2 3 4; do curl -s -o /dev/null -X POST -H "$J" -d "{\"email\":\"guess@smoke.local\",\"code\":\"$WRONG\"}" "$U/auth/verify"; done
+check "5th wrong guess burns the code, so the real one fails" "invalid_code" \
+  "$(curl -s -X POST -H "$J" -d "{\"email\":\"guess@smoke.local\",\"code\":\"$REAL\"}" "$U/auth/verify")"
 
-sec "circle: opt-in and presence"
-check "not listed before opt-in"    '"peers":[]'     "$(curl -s -H "$A" "$U/peers")"
-curl -s -X POST -H "$A" -H "$J" -d '{"peerOptIn":true}' "$U/me/peer-opt-in" >/dev/null
-curl -s -X POST -H "$B" -H "$J" -d '{"peerOptIn":true}' "$U/me/peer-opt-in" >/dev/null
-PEERS=$(curl -s -H "$A" "$U/peers")
-check "peer appears after opt-in"   "smokesignal"    "$PEERS"
-check "peer shows as online"        '"online":true'  "$PEERS"
-check "email never exposed to peer" ""               "$(echo "$PEERS" | grep -q '@smoke.local' && echo LEAKED || echo '')"
+OLD=$(curl -s -X POST -H "$J" -d '{"email":"old@smoke.local"}' "$U/auth/start" | field devCode)
+curl -s -o /dev/null -X POST -H "$J" -d '{"email":"old@smoke.local"}' "$U/auth/start"
+check "requesting a new code burns the old one" "invalid_code" \
+  "$(curl -s -X POST -H "$J" -d "{\"email\":\"old@smoke.local\",\"code\":\"$OLD\"}" "$U/auth/verify")"
 
-BID=$(echo "$PEERS" | python3 -c 'import sys,json;print(json.load(sys.stdin)["peers"][0]["id"])')
-AID=$(curl -s -H "$B" "$U/peers" | python3 -c 'import sys,json;print(json.load(sys.stdin)["peers"][0]["id"])')
+for _ in 1 2 3; do curl -s -o /dev/null -X POST -H "$J" -d '{"email":"old@smoke.local"}' "$U/auth/start"; done
+check "per-inbox hourly cap" "too_many_codes" \
+  "$(curl -s -X POST -H "$J" -d '{"email":"old@smoke.local"}' "$U/auth/start")"
 
-sec "circle: delivery"
-check "message sends"               '"delivered":true' "$(curl -s -X POST -H "$A" -H "$J" -d '{"body":"Rough week, two people left."}' "$U/peers/$BID/messages")"
-check "recipient has 1 unread"      '"unread":1'     "$(curl -s -H "$B" "$U/peers/unread")"
-check "recipient reads it"          "Rough week"     "$(curl -s -H "$B" "$U/peers/$AID/messages")"
-check "unread clears on open"       '"unread":0'     "$(curl -s -H "$B" "$U/peers/unread")"
+sec "sign-in and the cookie"
+A="$TMP/a"; B="$TMP/b"
+check "A signs in (new account)" "signedIn" "$(signin "$A" "Smoke.A@smoke.local" true)"
+check "cookie is HttpOnly"       "#HttpOnly_" "$(cat "$A")"
+signin "$B" "b@smoke.local" false > /dev/null
+ME=$(curl -s -b "$A" "$U/me")
+check "email normalised to lowercase" '"email":"smoke.a@smoke.local"' "$ME"
+check "release-notes opt-in recorded"  '"notifyReleases":true' "$ME"
+check "B left release notes off"       '"notifyReleases":false' "$(curl -s -b "$B" "$U/me")"
+check "new account has no name yet"    '"handle":""' "$ME"
 
-sec "safety — the checks that matter most"
-CRISIS=$(curl -s -X POST -H "$A" -H "$J" -d '{"body":"there is no reason to live"}' "$U/peers/$BID/messages")
-check "crisis peer msg NOT delivered" '"delivered":false' "$CRISIS"
-check "crisis peer msg returns card"  '"crisis":true'     "$CRISIS"
-check "crisis text absent from thread" "" \
-  "$(curl -s -H "$B" "$U/peers/$AID/messages" | grep -q 'no reason to live' && echo LEAKED || echo '')"
-check "ordinary burnout idiom passes" '"delivered":true' \
-  "$(curl -s -X POST -H "$A" -H "$J" -d '{"body":"this workload is killing my motivation"}' "$U/peers/$BID/messages")"
+sec "onboarding order: name, then consent"
+check "name can be chosen before consent" '"handle"' \
+  "$(curl -s -b "$A" -X POST -H "$J" -d '{"handle":"smokeharbour"}' "$U/me/handle")"
+check "conversations blocked before consent" "403" "$(code -b "$A" "$U/sessions")"
+check "email-shaped name refused"  "400" "$(code -b "$B" -X POST -H "$J" -d '{"handle":"me@work.com"}' "$U/me/handle")"
+check "duplicate name refused"     "handle_taken" \
+  "$(curl -s -b "$B" -X POST -H "$J" -d '{"handle":"smokeharbour"}' "$U/me/handle")"
+curl -s -o /dev/null -b "$B" -X POST -H "$J" -d '{"handle":"smokesignal"}' "$U/me/handle"
+curl -s -o /dev/null -b "$A" -X POST "$U/consent"; curl -s -o /dev/null -b "$B" -X POST "$U/consent"
+check "conversations open after consent" "200" "$(code -b "$A" "$U/sessions")"
 
-sec "notes: isolation"
-NOTE=$(curl -s -X POST -H "$A" "$U/notes" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-check "note created"                "-"              "$NOTE"
-check "owner can save"              '"saved":true'   "$(curl -s -X PUT -H "$A" -H "$J" -d '{"title":"t","body":"b"}' "$U/notes/$NOTE")"
-check "other user cannot save"      "404"            "$(code -X PUT -H "$B" -H "$J" -d '{"title":"x","body":"x"}' "$U/notes/$NOTE")"
-check "other user sees no notes"    '"notes":[]'     "$(curl -s -H "$B" "$U/notes")"
+sec "the email is never visible to another user"
+curl -s -o /dev/null -b "$A" -X POST -H "$J" -d '{"peerOptIn":true}' "$U/me/peer-opt-in"
+curl -s -o /dev/null -b "$B" -X POST -H "$J" -d '{"peerOptIn":true}' "$U/me/peer-opt-in"
+PEERS_A=$(curl -s -b "$A" "$U/peers"); PEERS_B=$(curl -s -b "$B" "$U/peers")
+check  "B appears to A by name"          "smokesignal" "$PEERS_A"
+absent "B's email absent from A's view"  "b@smoke.local" "$PEERS_A"
+absent "A's email absent from B's view"  "smoke.a@smoke.local" "$PEERS_B"
+absent "no email field at all in peers"  '"email"' "$PEERS_A$PEERS_B"
+BID=$(echo "$PEERS_A" | python3 -c 'import sys,json;print(json.load(sys.stdin)["peers"][0]["id"])')
+AID=$(echo "$PEERS_B" | python3 -c 'import sys,json;print(json.load(sys.stdin)["peers"][0]["id"])')
+curl -s -o /dev/null -b "$A" -X POST -H "$J" -d '{"body":"Rough week, two people left."}' "$U/peers/$BID/messages"
+absent "no email in a peer thread" "@smoke.local" "$(curl -s -b "$B" "$U/peers/$AID/messages")"
 
-sec "authorisation"
-check "unknown session is 404"      "404"            "$(code -H "$A" "$U/sessions/00000000-0000-0000-0000-000000000000/messages")"
+sec "safety"
+CRISIS=$(curl -s -b "$A" -X POST -H "$J" -d '{"body":"there is no reason to live"}' "$U/peers/$BID/messages")
+check  "crisis peer message NOT delivered" '"delivered":false' "$CRISIS"
+check  "sender gets the resource card"     '"crisis":true' "$CRISIS"
+absent "crisis text absent from thread"    "no reason to live" "$(curl -s -b "$B" "$U/peers/$AID/messages")"
+check  "ordinary burnout idiom passes"     '"delivered":true' \
+  "$(curl -s -b "$A" -X POST -H "$J" -d '{"body":"this workload is killing my motivation"}' "$U/peers/$BID/messages")"
+
+sec "notes isolation and authorisation"
+NOTE=$(curl -s -b "$A" -X POST "$U/notes" | field id)
+check "owner can save"         '"saved":true' "$(curl -s -b "$A" -X PUT -H "$J" -d '{"title":"t","body":"b"}' "$U/notes/$NOTE")"
+check "other user cannot save" "404" "$(code -b "$B" -X PUT -H "$J" -d '{"title":"x","body":"x"}' "$U/notes/$NOTE")"
+check "unknown session is 404" "404" "$(code -b "$A" "$U/sessions/00000000-0000-0000-0000-000000000000/messages")"
+
+sec "sign-out really ends the session"
+cp "$A" "$TMP/a.stolen"   # simulate a copied cookie
+check "sign out"                        '"signedOut":true' "$(curl -s -b "$A" -X POST "$U/auth/signout")"
+check "the old cookie no longer works"  "401" "$(code -b "$TMP/a.stolen" "$U/me")"
+signin "$A" "smoke.a@smoke.local" false > /dev/null
+check "returning sign-in reaches the same account" '"handle":"smokeharbour"' "$(curl -s -b "$A" "$U/me")"
+check "returning sign-in kept release-notes setting" '"notifyReleases":true' "$(curl -s -b "$A" "$U/me")"
 
 sec "erasure"
-check "delete succeeds"             '"deleted":true' "$(curl -s -X DELETE -H "$A" "$U/me")"
-check "deleted user is gone"        '"peers":[]'     "$(curl -s -H "$B" "$U/peers")"
-curl -s -X DELETE -H "$B" "$U/me" >/dev/null
+cp "$A" "$TMP/a.after"
+check "delete succeeds"                   '"deleted":true' "$(curl -s -b "$A" -X DELETE "$U/me")"
+check "deleted user's cookie is dead"     "401" "$(code -b "$TMP/a.after" "$U/me")"
+# Assert A specifically is gone — other real users may legitimately be listed.
+absent "deleted user vanished from circle" "$AID" "$(curl -s -b "$B" "$U/peers")"
+curl -s -o /dev/null -b "$B" -X DELETE "$U/me"
 
 printf '\n\033[1m%d passed, %d failed\033[0m\n' "$PASS" "$FAIL"
-[ "$FAIL" -eq 0 ] || exit 1
+[ "$FAIL" -eq 0 ]

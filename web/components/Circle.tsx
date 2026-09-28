@@ -236,7 +236,7 @@ function OptInGate({ onJoin, error }: { onJoin: () => void; error: string | null
 
       <ul className="mt-7 space-y-3">
         {[
-          ["Only your chosen name is shown", `You appear as a handle and nothing else. Never your email, never your GitHub name.`],
+          ["Only your chosen name is shown", `You appear as your chosen name and nothing else. Your email is never shown, listed, or linked to it.`],
           ["Messages wait", "Write to someone who is offline and they will see it when they return. Nobody owes you a fast reply, and you owe nobody one."],
           ["The same safety filter applies", "Crisis language is stopped before it is delivered. Peer support is not crisis support, and neither of you should be put in that position."],
           ["Leave whenever", "One click removes you from everyone's list."],

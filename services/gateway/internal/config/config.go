@@ -1,9 +1,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -13,10 +15,25 @@ type Config struct {
 	Port string
 
 	DatabaseURL string
-	RedisAddr   string
+	// RedisAddr is optional. Empty means no queue: the API skips enqueueing
+	// and cmd/summarise writes episodic memory on a schedule instead.
+	RedisAddr string
 
-	BackendJWTSecret string
-	CORSOrigin       string
+	// AuthSecret keys the HMAC over sign-in codes. It no longer has to match
+	// anything in the frontend — Go owns sign-in end to end, so the
+	// shared-secret-mismatch failure mode is gone.
+	AuthSecret string
+
+	ResendAPIKey string
+	MailFrom     string
+	// DevEchoCode returns the sign-in code in the API response so scripts can
+	// sign in without an inbox. Refused outright in production.
+	DevEchoCode bool
+
+	// TrustedProxies are the addresses allowed to set X-Forwarded-For. Behind
+	// Caddy this must be set, or every request appears to come from Caddy and
+	// the per-IP sign-in limit throttles everyone as one person.
+	TrustedProxies []string
 
 	AnthropicAPIKey string
 	ClaudeModel     string
@@ -30,8 +47,15 @@ type Config struct {
 	SafetyThreshold     float64
 
 	RateLimitPerMin int
+	// Sign-in attempts per client IP per minute.
+	AuthRateLimitPerMin int
 }
 
+func (c *Config) Production() bool { return c.Env == "production" }
+
+// Load reads configuration shared by every binary. Requirements specific to
+// the HTTP API live in ValidateAPI, so cmd/summarise does not need mail
+// credentials it will never use.
 func Load() (*Config, error) {
 	_ = godotenv.Load("../../.env", ".env")
 
@@ -39,9 +63,11 @@ func Load() (*Config, error) {
 		Env:                 get("ENV", "development"),
 		Port:                get("PORT", "8080"),
 		DatabaseURL:         get("DATABASE_URL", ""),
-		RedisAddr:           get("REDIS_ADDR", "localhost:6379"),
-		BackendJWTSecret:    get("BACKEND_JWT_SECRET", ""),
-		CORSOrigin:          get("CORS_ORIGIN", "http://localhost:3000"),
+		RedisAddr:           get("REDIS_ADDR", ""),
+		AuthSecret:          get("AUTH_SECRET", ""),
+		ResendAPIKey:        get("RESEND_API_KEY", ""),
+		MailFrom:            get("MAIL_FROM", "Astralis <onboarding@resend.dev>"),
+		DevEchoCode:         get("AUTH_DEV_ECHO_CODE", "") == "true",
 		AnthropicAPIKey:     get("ANTHROPIC_API_KEY", ""),
 		ClaudeModel:         get("CLAUDE_MODEL", "claude-sonnet-5"),
 		EmbedProvider:       get("EMBED_PROVIDER", "openai"),
@@ -49,35 +75,55 @@ func Load() (*Config, error) {
 		EmbedModel:          get("EMBED_MODEL", "text-embedding-3-small"),
 		SafetyClassifierURL: get("SAFETY_CLASSIFIER_URL", ""),
 	}
+	for _, p := range strings.Split(get("TRUSTED_PROXIES", "127.0.0.1,::1,172.16.0.0/12,10.0.0.0/8"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			c.TrustedProxies = append(c.TrustedProxies, p)
+		}
+	}
 
-	dim, err := strconv.Atoi(get("EMBED_DIM", "1536"))
-	if err != nil {
+	var err error
+	if c.EmbedDim, err = strconv.Atoi(get("EMBED_DIM", "1536")); err != nil {
 		return nil, fmt.Errorf("EMBED_DIM must be an integer: %w", err)
 	}
-	c.EmbedDim = dim
-
-	th, err := strconv.ParseFloat(get("SAFETY_THRESHOLD", "0.55"), 64)
-	if err != nil {
+	if c.SafetyThreshold, err = strconv.ParseFloat(get("SAFETY_THRESHOLD", "0.55"), 64); err != nil {
 		return nil, fmt.Errorf("SAFETY_THRESHOLD must be a float: %w", err)
 	}
-	c.SafetyThreshold = th
-
-	rl, err := strconv.Atoi(get("RATE_LIMIT_PER_MIN", "20"))
-	if err != nil {
+	if c.RateLimitPerMin, err = strconv.Atoi(get("RATE_LIMIT_PER_MIN", "20")); err != nil {
 		return nil, fmt.Errorf("RATE_LIMIT_PER_MIN must be an integer: %w", err)
 	}
-	c.RateLimitPerMin = rl
+	if c.AuthRateLimitPerMin, err = strconv.Atoi(get("AUTH_RATE_LIMIT_PER_MIN", "10")); err != nil {
+		return nil, fmt.Errorf("AUTH_RATE_LIMIT_PER_MIN must be an integer: %w", err)
+	}
 
 	for name, v := range map[string]string{
-		"DATABASE_URL":       c.DatabaseURL,
-		"BACKEND_JWT_SECRET": c.BackendJWTSecret,
-		"ANTHROPIC_API_KEY":  c.AnthropicAPIKey,
+		"DATABASE_URL":      c.DatabaseURL,
+		"ANTHROPIC_API_KEY": c.AnthropicAPIKey,
 	} {
 		if v == "" {
 			return nil, fmt.Errorf("missing required env var %s", name)
 		}
 	}
 	return c, nil
+}
+
+// ValidateAPI fails fast on anything that would make sign-in unsafe. Every
+// check here is a mistake that would otherwise surface as a security problem
+// rather than an error message.
+func (c *Config) ValidateAPI() error {
+	if len(c.AuthSecret) < 32 {
+		return errors.New("AUTH_SECRET must be at least 32 characters (openssl rand -base64 48)")
+	}
+	if c.Production() {
+		if c.ResendAPIKey == "" {
+			// Without a provider the API falls back to printing codes to the
+			// log — fine on a laptop, a live credential leak on a server.
+			return errors.New("RESEND_API_KEY is required in production")
+		}
+		if c.DevEchoCode {
+			return errors.New("AUTH_DEV_ECHO_CODE must never be set in production")
+		}
+	}
+	return nil
 }
 
 func get(key, fallback string) string {

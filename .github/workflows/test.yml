@@ -66,10 +66,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-        env:
-          # Build-time only; the real values live in the hosting provider.
-          AUTH_SECRET: ci-placeholder-not-a-real-secret
-          NEXT_PUBLIC_API_URL: http://localhost:8080
 
   migrations:
     name: sql — migrations apply cleanly

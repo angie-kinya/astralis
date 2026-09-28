@@ -1,13 +1,13 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import AppGate from "@/components/AppGate";
-import { auth } from "@/auth";
 
-// Server-side guard: an unauthenticated visitor never renders a protected
-// screen and then bounces. The Go API enforces the same rule independently —
-// this is convenience, the API is the boundary.
+// A cheap first check: no session cookie, no app. This only reads whether the
+// cookie exists — it cannot tell a valid session from an expired one, and does
+// not try to. The Go API is the real boundary: an invalid cookie gets a 401 on
+// the first request, the API clears it, and the client moves to /signin.
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) redirect("/");
+  if (!cookies().get("astralis_session")) redirect("/signin");
   return <AppGate>{children}</AppGate>;
 }

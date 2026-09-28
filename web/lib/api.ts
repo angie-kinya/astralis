@@ -1,85 +1,61 @@
 // The only place in the frontend that knows the Go API exists.
 //
-// It owns one non-obvious job: the backend token. The UI must never think
-// about tokens, so this module caches one in memory, refreshes it before it
-// expires, and retries exactly once on a 401 (which happens when a token
-// expires mid-request or the server restarts).
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
-
-let cached: { token: string; expiresAt: number } | null = null;
-let inFlight: Promise<string> | null = null;
-
-async function mintToken(): Promise<string> {
-  const res = await fetch("/api/token", { cache: "no-store" });
-  if (!res.ok) throw new ApiError("You are not signed in.", 401);
-  const { token } = (await res.json()) as { token: string };
-  // The server issues 15 minutes; refresh at 13 so a slow request never
-  // straddles the boundary.
-  cached = { token, expiresAt: Date.now() + 13 * 60_000 };
-  return token;
-}
-
-async function getToken(): Promise<string> {
-  if (cached && Date.now() < cached.expiresAt) return cached.token;
-  // Deduplicate: a page that fires four requests on mount should mint once.
-  inFlight ??= mintToken().finally(() => { inFlight = null; });
-  return inFlight;
-}
+// There are no tokens here any more. Sign-in sets an HttpOnly cookie that
+// JavaScript cannot read — by design — and the browser attaches it to every
+// same-origin request automatically. The client's whole job is to call
+// relative /api/v1 paths and react when the answer is "signed out".
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) {
     super(message);
     this.name = "ApiError";
   }
+  get signedOut()    { return this.status === 401; }
   get needsConsent() { return this.code === "consent_required"; }
-  get rateLimited() { return this.status === 429; }
-  get handleTaken() { return this.code === "handle_taken"; }
+  get rateLimited()  { return this.status === 429; }
+  get handleTaken()  { return this.code === "handle_taken"; }
 }
 
-export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
-  const token = await getToken();
-  const res = await fetch(`${BASE}/api/v1${path}`, {
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`/api/v1${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(init.headers ?? {}),
-    },
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
   });
 
-  if (res.status === 401 && retry) {
-    cached = null;              // stale token, mint a fresh one and try again
-    return api<T>(path, init, false);
-  }
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-    throw new ApiError(
-      body.message ?? body.error ?? `Request failed (${res.status})`,
+    const err = new ApiError(
+      body.message ?? (res.status === 401 ? "Your session has ended. Sign in again." : `Request failed (${res.status})`),
       res.status,
       body.error,
     );
+    // Any 401 anywhere means the session is gone (expired, signed out on
+    // another device, or the account was deleted). Send the person to sign-in
+    // rather than leaving every screen to render its own confusing error.
+    if (err.signedOut && typeof window !== "undefined" && !path.startsWith("/auth/")) {
+      window.location.assign("/signin");
+    }
+    throw err;
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
+export async function signOut(): Promise<void> {
+  await fetch("/api/v1/auth/signout", { method: "POST", credentials: "same-origin" }).catch(() => {});
+  window.location.assign("/");
+}
+
 /**
- * Fired as the tab closes so the summariser job runs.
- *
- * navigator.sendBeacon cannot set an Authorization header, and putting a JWT
- * in a query string leaks it into every access log between here and the
- * server. fetch({keepalive: true}) keeps the request alive through page
- * teardown *and* keeps the credential in a header.
+ * Fired as the tab closes so a summary can be queued. keepalive lets the
+ * request outlive the page; the cookie rides along like any other request.
+ * Best effort — cmd/summarise catches anything this misses.
  */
-export async function endSessionOnUnload(sessionId: string): Promise<void> {
-  const token = cached?.token ?? (await getToken().catch(() => null));
-  if (!token) return;
-  void fetch(`${BASE}/api/v1/sessions/${sessionId}/end`, {
-    method: "POST",
-    keepalive: true,
-    headers: { Authorization: `Bearer ${token}` },
-  }).catch(() => { /* best effort; a missing summary is not worth an error */ });
+export function endSessionOnUnload(sessionId: string): void {
+  void fetch(`/api/v1/sessions/${sessionId}/end`, {
+    method: "POST", keepalive: true, credentials: "same-origin",
+  }).catch(() => {});
 }
 
 // ---------------------------------------------------------------- API types
@@ -88,13 +64,14 @@ export async function endSessionOnUnload(sessionId: string): Promise<void> {
 
 export type Me = {
   id: string;
+  /** Visible to its owner only. No endpoint returns another user's email. */
   email: string;
-  displayName: string;
   consented: boolean;
   consentVersion: string;
   /** The anonymous name. Empty string means onboarding is not finished. */
   handle: string;
   peerOptIn: boolean;
+  notifyReleases: boolean;
 };
 
 export type Peer = {

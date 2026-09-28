@@ -21,8 +21,11 @@ func (s *Server) handleMe(c *gin.Context) {
 		handle = *u.Handle
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"id": u.ID, "email": u.Email, "displayName": u.DisplayName,
+		// email is returned to its owner and nobody else. No other endpoint
+		// in this service ever serialises it.
+		"id": u.ID, "email": u.Email,
 		"consented": u.HasConsented(), "consentVersion": ConsentVersion,
+		"notifyReleases": u.NotifyReleases,
 		// handle drives onboarding: empty means Astralis has not yet asked
 		// what to call this person.
 		"handle": handle, "peerOptIn": u.PeerOptIn,
@@ -42,6 +45,9 @@ func (s *Server) handleDeleteMe(c *gin.Context) {
 		fail(c, err, "could not delete account")
 		return
 	}
+	// The cascade already removed every session row; clear the cookie too so
+	// the browser is not left holding a token for an account that is gone.
+	s.clearSessionCookie(c)
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
@@ -153,6 +159,12 @@ func (s *Server) handleSendMessage(c *gin.Context) {
 // handleEndSession enqueues the summary job and returns straight away
 func (s *Server) handleEndSession(c *gin.Context) {
 	if !s.ownsSession(c) {
+		return
+	}
+	// No queue configured (the free/single-VM deployment): nothing to do here.
+	// cmd/summarise finds quiet sessions on its own schedule.
+	if s.queue == nil {
+		c.JSON(http.StatusAccepted, gin.H{"queued": false})
 		return
 	}
 	task, err := tasks.NewSummariseTask(c.Param("id"), currentUser(c).ID)

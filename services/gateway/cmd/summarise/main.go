@@ -77,6 +77,14 @@ func main() {
 	}
 	slog.Info("run complete", "summarised", done, "failed", failed)
 
+	// Housekeeping rides along with the periodic job. Nothing depends on it —
+	// every lookup checks expiry — it just keeps the tables small.
+	if n, err := db.PurgeExpiredAuth(ctx); err != nil {
+		slog.Error("purge expired auth", "err", err)
+	} else if n > 0 {
+		slog.Info("purged expired auth rows", "count", n)
+	}
+
 	// Exit non-zero only if everything failed — that is a real outage worth a
 	// red tick in Actions. A single failure among many is not.
 	if failed > 0 && done == 0 {

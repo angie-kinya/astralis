@@ -26,6 +26,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if cfg.RedisAddr == "" {
+		slog.Error("config", "err", "REDIS_ADDR is required for the queue worker; use cmd/summarise without Redis")
+		os.Exit(1)
+	}
+
 	db, err := store.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("database", "err", err)

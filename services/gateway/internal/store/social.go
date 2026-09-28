@@ -47,14 +47,6 @@ func (s *Store) SetPeerOptIn(ctx context.Context, userID string, in bool) error 
 	return err
 }
 
-// TouchPresence is called by middleware on every authenticated request. It is
-// deliberately fire-and-forget at the call site: presence is nice to have and
-// must never be able to fail a real request.
-func (s *Store) TouchPresence(ctx context.Context, userID string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE users SET last_seen_at=now() WHERE id=$1`, userID)
-	return err
-}
-
 // ------------------------------------------------------------------ peers
 
 // ListPeers returns everyone who has opted in, with unread counts, online

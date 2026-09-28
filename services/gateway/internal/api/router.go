@@ -4,16 +4,15 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
-	"time"
 
-	"astralis/gateway/internal/auth"
 	"astralis/gateway/internal/config"
+	"astralis/gateway/internal/mail"
 	"astralis/gateway/internal/rag"
 	"astralis/gateway/internal/safety"
 	"astralis/gateway/internal/store"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynq"
 )
@@ -23,14 +22,20 @@ type Server struct {
 	store   *store.Store
 	engine  *rag.Engine
 	filter  *safety.Filter
-	queue   *asynq.Client
+	queue   *asynq.Client // nil when REDIS_ADDR is unset; see handleEndSession
+	mailer  mail.Sender
 	limiter *rateLimiter
+	// A separate bucket for sign-in, keyed by IP. Sharing the per-user limiter
+	// would let a sign-in flood from one address eat into chat allowances.
+	authLimiter *rateLimiter
 }
 
-func NewServer(cfg *config.Config, s *store.Store, e *rag.Engine, f *safety.Filter, q *asynq.Client) *Server {
+func NewServer(cfg *config.Config, s *store.Store, e *rag.Engine, f *safety.Filter,
+	q *asynq.Client, m mail.Sender) *Server {
 	return &Server{
-		cfg: cfg, store: s, engine: e, filter: f, queue: q,
-		limiter: newRateLimiter(cfg.RateLimitPerMin),
+		cfg: cfg, store: s, engine: e, filter: f, queue: q, mailer: m,
+		limiter:     newRateLimiter(cfg.RateLimitPerMin),
+		authLimiter: newRateLimiter(cfg.AuthRateLimitPerMin),
 	}
 }
 
@@ -42,13 +47,17 @@ func (s *Server) Router() *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), requestLogger())
 
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{s.cfg.CORSOrigin},
-		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
+	// Only Caddy (or the Next dev server) may tell us the client's real IP.
+	// Trusting every X-Forwarded-For would let anyone bypass the per-IP
+	// sign-in limit by inventing a header.
+	if err := r.SetTrustedProxies(s.cfg.TrustedProxies); err != nil {
+		slog.Error("trusted proxies", "err", err)
+	}
+
+	// No CORS middleware, deliberately. The browser only ever talks to one
+	// origin: Caddy routes /api/* to this service in production, and the Next
+	// dev server rewrites /api/* here locally. Same-origin means there is no
+	// cross-origin policy to get wrong, and the session cookie is first-party.
 
 	// Liveness only. Render restarts a container whose health check fails
 	// if this also pinged Postgres, a ten-second database blip would become a restart loop.
@@ -56,16 +65,28 @@ func (s *Server) Router() *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Middleware composes left to right. By the time any handler below runs, the token is verified and a real user row exists.
-	v1 := r.Group("/api/v1", auth.Middleware(s.cfg.BackendJWTSecret), s.resolveUser())
+	// Sign-in. The only endpoints reachable without a session, so they carry
+	// their own per-IP limit.
+	pub := r.Group("/api/v1/auth", s.authRateLimit())
+	{
+		pub.POST("/start", s.handleAuthStart)
+		pub.POST("/verify", s.handleAuthVerify)
+		pub.POST("/signout", s.handleSignOut)
+	}
+
+	// Middleware composes left to right. By the time any handler below runs,
+	// the session is valid and a real, email-verified user row exists.
+	v1 := r.Group("/api/v1", s.authenticate())
 	{
 		v1.GET("/me", s.handleMe)
 		v1.POST("/consent", s.handleConsent)
 		v1.DELETE("/me", s.handleDeleteMe)
+		v1.POST("/me/notify", s.handleNotifyReleases)
 
-		// Onboarding. Behind consent but NOT behind a handle, because this is
-		// the endpoint that creates the handle.
-		v1.POST("/me/handle", s.requireConsent(), s.handleSetHandle)
+		// Onboarding order is email -> name -> consent -> Astralis, so choosing
+		// a handle does NOT require consent. A handle is not conversation
+		// content; the consent sheet is about what you then say.
+		v1.POST("/me/handle", s.handleSetHandle)
 		v1.POST("/me/peer-opt-in", s.requireConsent(), s.handlePeerOptIn)
 
 		// Everything that stores conversation content sits behind consent as a rate limit.

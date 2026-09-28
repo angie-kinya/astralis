@@ -1,8 +1,9 @@
+import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import ThemeToggle from "@/components/ThemeToggle";
 import Wordmark from "@/components/Wordmark";
-import { auth, signIn } from "@/auth";
 
 /**
  * The landing page.
@@ -37,8 +38,7 @@ const MECHANISM = [
 ];
 
 export default async function Landing() {
-  const session = await auth();
-  if (session?.user) redirect("/chat");
+  if (cookies().get("astralis_session")) redirect("/chat");
 
   return (
     <div className="relative min-h-dvh">
@@ -64,23 +64,14 @@ export default async function Landing() {
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
-            <form
-              action={async () => {
-                "use server";
-                await signIn("github", { redirectTo: "/chat" });
-              }}
-            >
-              <button className="btn-primary" type="submit">
-                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor" aria-hidden>
-                  <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38l-.01-1.49c-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48l-.01 2.19c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-                </svg>
-                Continue with GitHub
-              </button>
-            </form>
+            <Link href="/signin" className="btn-primary">
+              Begin with your email
+              <span aria-hidden className="font-mono">›</span>
+            </Link>
             <span className="font-mono text-[.6875rem] leading-relaxed text-ink-3">
-              You pick an anonymous name next.
+              No account elsewhere needed. Nobody here
               <br className="hidden sm:block" />
-              Delete everything at any time.
+              ever sees your email — only a name you choose.
             </span>
           </div>
         </section>

@@ -35,17 +35,29 @@ func (s *Store) Close()              { s.pool.Close() }
 func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
 // models
+//
+// User is deliberately small. Email is here because the owner needs to see it
+// on their own settings page; it must never be copied into any type that is
+// serialised for another user (see Peer in social.go, which has no email).
 type User struct {
 	ID             string
-	ExternalID     string
 	Email          string
-	DisplayName    string
 	ConsentVersion *string
 
 	// Handle is the anonymous name other users see. Nil until onboarding.
-	// Email and DisplayName come from GitHub and never leave this service.
-	Handle    *string
-	PeerOptIn bool
+	Handle         *string
+	PeerOptIn      bool
+	NotifyReleases bool
+}
+
+// userCols is the one column list every user query scans, so adding a field
+// means changing one string and one Scan call rather than hunting for queries.
+const userCols = "id, email, consent_version, handle, peer_opt_in, notify_releases"
+
+func scanUser(row pgx.Row) (User, error) {
+	var u User
+	err := row.Scan(&u.ID, &u.Email, &u.ConsentVersion, &u.Handle, &u.PeerOptIn, &u.NotifyReleases)
+	return u, err
 }
 
 func (u User) HasConsented() bool { return u.ConsentVersion != nil }
@@ -78,21 +90,6 @@ type Chunk struct {
 }
 
 // users
-func (s *Store) UpsertUser(ctx context.Context, externalID, email, name string) (User, error) {
-	const q = `
-		INSERT INTO users (external_id, email, display_name)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (external_id) DO UPDATE
-		SET email = EXCLUDED.email, display_name = EXCLUDED.display_name
-		RETURNING id, external_id, email, COALESCE(display_name,''),
-		          consent_version, handle, peer_opt_in`
-	var u User
-	err := s.pool.QueryRow(ctx, q, externalID, email, name).
-		Scan(&u.ID, &u.ExternalID, &u.Email, &u.DisplayName,
-			&u.ConsentVersion, &u.Handle, &u.PeerOptIn)
-	return u, err
-}
-
 func (s *Store) GrantConsent(ctx context.Context, userID, version string) error {
 	_, err := s.pool.Exec(ctx,
 		`UPDATE users SET consent_version=$2, consent_given_at=now() WHERE id=$1`,

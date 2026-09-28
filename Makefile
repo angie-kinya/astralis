@@ -2,7 +2,7 @@
 COMPOSE ?= podman-compose
 GATEWAY  = services/gateway
 
-.PHONY: help up down logs migrate psql api worker research classifier web \
+.PHONY: help up down logs migrate psql api worker research classifier web smoke smoke-api \
         test test-go test-py lint fmt tidy check clean
 
 help:  ## Show this help
@@ -37,6 +37,11 @@ web:        ## Run the Next.js frontend on :3000
 	cd web && npm run dev
 
 # ------------------------------------------------------------ quality
+smoke-api:  ## Run the API in dev mode for scripts/smoke.sh (codes echoed, relaxed sign-in limit)
+	cd $(GATEWAY) && AUTH_DEV_ECHO_CODE=true AUTH_RATE_LIMIT_PER_MIN=500 go run ./cmd/api
+smoke:      ## End-to-end smoke test against a running `make smoke-api`
+	./scripts/smoke.sh
+
 test: test-go test-py   ## Run every test suite
 test-go:    ## Go tests with the race detector
 	cd $(GATEWAY) && go test ./... -race -cover

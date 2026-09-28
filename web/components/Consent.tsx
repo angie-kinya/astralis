@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { api } from "@/lib/api";
+import { api, signOut } from "@/lib/api";
 
 /**
  * A participant information sheet, not a cookie banner.
@@ -24,7 +24,11 @@ const SECTIONS = [
   },
   {
     h: "What is stored",
-    p: "Your name and email from GitHub, every message you send and every reply you receive, and a short factual summary of each conversation so the tool has continuity between sessions. Nothing else.",
+    p: "Your email address (to sign you in), the name you chose, every message you send and every reply you receive, and a short factual summary of each conversation so the tool has continuity between sessions. Nothing else.",
+  },
+  {
+    h: "Your email is never visible to anyone",
+    p: "Other people using Astralis see only the name you chose. Your email is not shown in the circle, beside your messages, or anywhere another person can reach, and it is never linked to your name for anyone but you. It is used to send sign-in codes and \u2014 only if you asked \u2014 release notes. It is never shared, sold, or used for marketing. Sign-in emails are delivered through Resend, an email provider, which sees the address only to deliver them.",
   },
   {
     h: "Who else sees it",
@@ -40,7 +44,7 @@ const SECTIONS = [
   },
   {
     h: "Talking to other people",
-    p: "You can opt in to a circle of other people using Astralis. If you do, they see only the name you chose \u2014 never your email or GitHub name. Messages between you are stored so they can be delivered when someone is offline. Peer support is not crisis support, and the same safety filter applies to those messages too. You can leave at any time.",
+    p: "You can opt in to a circle of other people using Astralis. If you do, they see only the name you chose \u2014 never your email, which is not linked to your name for anyone. Messages between you are stored so they can be delivered when someone is offline. Peer support is not crisis support, and the same safety filter applies to those messages too. You can leave at any time.",
   },
   {
     h: "Your notes",
@@ -121,7 +125,7 @@ export default function Consent({ version, onAccepted }: {
         <button className="btn-primary" onClick={() => void accept()} disabled={!read || busy}>
           {busy ? "Recording…" : "I have read this — continue"}
         </button>
-        <a className="btn-quiet" href="/api/auth/signout">Not now</a>
+        <button className="btn-quiet" onClick={() => void signOut()}>Not now</button>
         {!read && (
           <span className="font-mono text-[0.6875rem] text-ink-3">
             Scroll to the end to continue

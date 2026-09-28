@@ -7,7 +7,7 @@ import Onboarding from "@/components/Onboarding";
 import Rail from "@/components/Rail";
 import ThemeToggle from "@/components/ThemeToggle";
 import Wordmark from "@/components/Wordmark";
-import { api, type Me } from "@/lib/api";
+import { ApiError, api, type Me } from "@/lib/api";
 
 type Ctx = { me: Me; refresh: () => Promise<void>; setMe: (m: Me) => void };
 const MeContext = createContext<Ctx | null>(null);
@@ -34,7 +34,10 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try { setMe(await api<Me>("/me")); }
-    catch (e) { setError(e instanceof Error ? e.message : "Could not reach Astralis."); }
+    catch (e) {
+      if (e instanceof ApiError && e.signedOut) return; // api() is already redirecting
+      setError(e instanceof Error ? e.message : "Could not reach Astralis.");
+    }
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -59,11 +62,14 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   if (error) return <Centered tone="warn">{error}</Centered>;
   if (!me)   return <Centered>Connecting…</Centered>;
 
-  if (!me.consented) {
-    return <Solo><Consent version={me.consentVersion} onAccepted={() => void refresh()} /></Solo>;
-  }
+  // Order: email (already proven by now) -> a name -> the terms -> Astralis.
+  // The name comes first because it is the first thing Astralis says to you;
+  // the terms come before anything you say to it is stored.
   if (!me.handle) {
     return <Solo><Onboarding onDone={(handle) => setMe({ ...me, handle })} /></Solo>;
+  }
+  if (!me.consented) {
+    return <Solo><Consent version={me.consentVersion} onAccepted={() => void refresh()} /></Solo>;
   }
 
   return (

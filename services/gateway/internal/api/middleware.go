@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -26,24 +27,35 @@ func requestLogger() gin.HandlerFunc {
 	}
 }
 
-// resolveUser maps the JWT subject to a row in the users table, creating it on first sight.
-// Every handler downstream can then assume a real user exists which is why none of them contain a nil check.
-func (s *Server) resolveUser() gin.HandlerFunc {
+// authenticate resolves the session cookie to a user, or stops the request.
+//
+// This replaces two things the GitHub era needed: a JWT check and an upsert
+// that created users on first sight. Users are now created in exactly one
+// place — after an email has been proven in handleAuthVerify — so there is no
+// path by which a request can conjure an account into existence. (The old
+// upsert had one: a still-valid token presented after account deletion would
+// quietly recreate the deleted user.)
+func (s *Server) authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claims := auth.From(c)
-		u, err := s.store.UpsertUser(c.Request.Context(), claims.Subject, claims.Email, claims.Name)
+		token, err := c.Cookie(auth.CookieName)
+		if err != nil || token == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "signed_out"})
+			return
+		}
+		u, err := s.store.UserBySession(c.Request.Context(), auth.HashToken(token))
+		if errors.Is(err, store.ErrNoSession) {
+			// Clear the dead cookie so the browser stops presenting it, and the
+			// landing page stops treating this visitor as signed in.
+			s.clearSessionCookie(c)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "signed_out"})
+			return
+		}
 		if err != nil {
-			slog.Error("upsert user", "err", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "user lookup failed"})
+			slog.Error("resolve session", "err", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "could not check your session"})
 			return
 		}
 		c.Set(userKey, u)
-
-		// Presence, best effort. Deliberately not checked: "who is online" is
-		// a nicety and must never be able to fail a real request.
-		if err := s.store.TouchPresence(c.Request.Context(), u.ID); err != nil {
-			slog.Debug("touch presence", "err", err)
-		}
 		c.Next()
 	}
 }
