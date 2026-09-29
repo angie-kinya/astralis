@@ -24,13 +24,19 @@ type Anthropic struct {
 	apiKey string
 	model  string
 	http   *http.Client
+	// baseURL is a field rather than a literal so tests can point the client
+	// at a local fake server and check the exact request it sends.
+	baseURL string
 }
+
+const anthropicBaseURL = "https://api.anthropic.com"
 
 func NewAnthropic(apiKey, model string) *Anthropic {
 	return &Anthropic{
-		apiKey: apiKey,
-		model:  model,
-		http:   &http.Client{Timeout: 90 * time.Second}, //use this instead of http.DefaultClient since it has no timeout and a hung connection blocks a goroutine forever
+		apiKey:  apiKey,
+		model:   model,
+		baseURL: anthropicBaseURL,
+		http:    &http.Client{Timeout: 90 * time.Second}, //use this instead of http.DefaultClient since it has no timeout and a hung connection blocks a goroutine forever
 	}
 }
 
@@ -59,7 +65,7 @@ func (a *Anthropic) Complete(ctx context.Context, system string, msgs []Message,
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.anthropic.com/v1/message", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+"/v1/messages", bytes.NewReader(payload))
 	if err != nil {
 		return "", err
 	}
