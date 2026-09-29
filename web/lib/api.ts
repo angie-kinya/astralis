@@ -26,7 +26,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
     const err = new ApiError(
-      body.message ?? (res.status === 401 ? "Your session has ended. Sign in again." : `Request failed (${res.status})`),
+      // Handlers send a human sentence in `message`, or — via fail() — in
+      // `error`. Only fall back to a bare status when the body had neither.
+      res.status === 401
+        ? "Your session has ended. Sign in again."   // body.error is only a code here
+        : body.message ?? body.error ?? `Request failed (${res.status})`,
       res.status,
       body.error,
     );
