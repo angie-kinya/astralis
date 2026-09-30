@@ -38,6 +38,18 @@ type Config struct {
 	AnthropicAPIKey string
 	ClaudeModel     string
 
+	// AnalystModel reads every message before the reply is written
+	// a small model: it runs on every turn and only fills in a fixed JSON shape
+	AnalystModel string
+	// RespondEffort is passed to the reply model as output_config.effort
+	// Empty leaves it out, which every model accepts
+	RespondEffort string
+	// MinSimilarity is the cosine similarity below which a passage is too loosely related to show the model
+	MinSimilarity float64
+	// AdminEmailHashes are lowercase hex SHA-256 digests of the emails allowed
+	// to read /api/v1/admin. hashes rather than addresses, so the list can live in the public compose file without publishing anyone's email
+	AdminEmailHashes []string
+
 	EmbedProvider string
 	OpenAIAPIKey  string
 	EmbedModel    string
@@ -70,6 +82,8 @@ func Load() (*Config, error) {
 		DevEchoCode:         get("AUTH_DEV_ECHO_CODE", "") == "true",
 		AnthropicAPIKey:     get("ANTHROPIC_API_KEY", ""),
 		ClaudeModel:         get("CLAUDE_MODEL", "claude-sonnet-5"),
+		AnalystModel:        get("ANALYST_MODEL", "claude-haiku-4-5"),
+		RespondEffort:       get("RESPOND_EFFORT", ""),
 		EmbedProvider:       get("EMBED_PROVIDER", "openai"),
 		OpenAIAPIKey:        get("OPENAI_API_KEY", ""),
 		EmbedModel:          get("EMBED_MODEL", "text-embedding-3-small"),
@@ -78,6 +92,12 @@ func Load() (*Config, error) {
 	for _, p := range strings.Split(get("TRUSTED_PROXIES", "127.0.0.1,::1,172.16.0.0/12,10.0.0.0/8"), ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			c.TrustedProxies = append(c.TrustedProxies, p)
+		}
+	}
+
+	for _, h := range strings.Split(get("ADMIN_EMAIL_SHA256", ""), ",") {
+		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+			c.AdminEmailHashes = append(c.AdminEmailHashes, h)
 		}
 	}
 
@@ -93,6 +113,9 @@ func Load() (*Config, error) {
 	}
 	if c.AuthRateLimitPerMin, err = strconv.Atoi(get("AUTH_RATE_LIMIT_PER_MIN", "10")); err != nil {
 		return nil, fmt.Errorf("AUTH_RATE_LIMIT_PER_MIN must be an integer: %w", err)
+	}
+	if c.MinSimilarity, err = strconv.ParseFloat(get("MIN_SIMILARITY", "0.25"), 64); err != nil {
+		return nil, fmt.Errorf("MIN_SIMILARITY must be a float: %w", err)
 	}
 
 	for name, v := range map[string]string{
