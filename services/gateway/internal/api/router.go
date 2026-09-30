@@ -1,5 +1,5 @@
 // Package api wires HTTP routes to handlers. Handlers stay thin: parse input,
-// call a service, shape the response. Business logic lives in rag/store/safety
+// call a service, shape the response. Business logic lives in agent/store/safety
 // so it can be tested without spinning up a server.
 package api
 
@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 
+	"astralis/gateway/internal/agent"
 	"astralis/gateway/internal/config"
 	"astralis/gateway/internal/mail"
-	"astralis/gateway/internal/rag"
+	"astralis/gateway/internal/reading"
 	"astralis/gateway/internal/safety"
 	"astralis/gateway/internal/store"
 
@@ -20,7 +21,7 @@ import (
 type Server struct {
 	cfg     *config.Config
 	store   *store.Store
-	engine  *rag.Engine
+	agent   *agent.Agent
 	filter  *safety.Filter
 	queue   *asynq.Client // nil when REDIS_ADDR is unset; see handleEndSession
 	mailer  mail.Sender
@@ -28,14 +29,16 @@ type Server struct {
 	// A separate bucket for sign-in, keyed by IP. Sharing the per-user limiter
 	// would let a sign-in flood from one address eat into chat allowances.
 	authLimiter *rateLimiter
+	reading     *reading.Service
 }
 
-func NewServer(cfg *config.Config, s *store.Store, e *rag.Engine, f *safety.Filter,
+func NewServer(cfg *config.Config, s *store.Store, ag *agent.Agent, f *safety.Filter,
 	q *asynq.Client, m mail.Sender) *Server {
 	return &Server{
-		cfg: cfg, store: s, engine: e, filter: f, queue: q, mailer: m,
+		cfg: cfg, store: s, agent: ag, filter: f, queue: q, mailer: m,
 		limiter:     newRateLimiter(cfg.RateLimitPerMin),
 		authLimiter: newRateLimiter(cfg.AuthRateLimitPerMin),
+		reading:     reading.New(),
 	}
 }
 
@@ -88,6 +91,16 @@ func (s *Server) Router() *gin.Engine {
 		// content; the consent sheet is about what you then say.
 		v1.POST("/me/handle", s.handleSetHandle)
 		v1.POST("/me/peer-opt-in", s.requireConsent(), s.handlePeerOptIn)
+
+		// Operations. Aggregates and ids only, never message text. Anyone not
+		// on the admin list gets a 404, so the routes do not reveal themselves.
+		admin := v1.Group("/admin", s.requireAdmin())
+		admin.GET("/overview", s.handleAdminOverview)
+		admin.GET("/runs", s.handleAdminRuns)
+
+		// Public headlines for the Resources page. No consent needed: nothing
+		// is stored, and the response is the same for everyone.
+		v1.GET("/reading/latest", s.rateLimit(), s.handleLatestReading)
 
 		// Everything that stores conversation content sits behind consent as a rate limit.
 		// Enforcing it here structurally beats trusting six handlers to each remember.

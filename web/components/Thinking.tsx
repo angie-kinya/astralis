@@ -17,7 +17,7 @@ export default function Thinking() {
         ))}
       </div>
       <p className="mt-3.5 font-mono text-[.625rem] uppercase tracking-[.12em] text-ink-3">
-        searching the library
+        working on a reply
       </p>
     </div>
   );

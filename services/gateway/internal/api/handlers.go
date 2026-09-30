@@ -1,18 +1,22 @@
 package api
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 
-	"astralis/gateway/internal/safety"
+	"astralis/gateway/internal/agent"
+	"astralis/gateway/internal/store"
 	"astralis/gateway/internal/tasks"
 
 	"github.com/gin-gonic/gin"
 )
 
-// ConsentVersion for whenever the participation terms change
-const ConsentVersion = "2026-09-v1"
+// ConsentVersion changes whenever the participation terms change. Everyone
+// who accepted an older version is asked again before their next message.
+// v2 adds the structured observations the agent records about each message.
+const ConsentVersion = "2026-10-v2"
 
 func (s *Server) handleMe(c *gin.Context) {
 	u := currentUser(c)
@@ -24,7 +28,7 @@ func (s *Server) handleMe(c *gin.Context) {
 		// email is returned to its owner and nobody else. No other endpoint
 		// in this service ever serialises it.
 		"id": u.ID, "email": u.Email,
-		"consented": u.HasConsented(), "consentVersion": ConsentVersion,
+		"consented": u.HasConsentedTo(ConsentVersion), "consentVersion": ConsentVersion,
 		"notifyReleases": u.NotifyReleases,
 		// handle drives onboarding: empty means Astralis has not yet asked
 		// what to call this person.
@@ -85,75 +89,34 @@ type sendMessageReq struct {
 	Content string `json:"content" binding:"required,min=1,max=4000"`
 }
 
-// persist -> safety check -> EITHER fixed response OR generate -> persist reply
+// handleSendMessage is deliberately thin. everything between receiving the
+// text and returning the reply is the agent's job; see package agent
 func (s *Server) handleSendMessage(c *gin.Context) {
 	if !s.ownsSession(c) {
 		return
 	}
 	var req sendMessageReq
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Content) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid message"})
 		return
 	}
 
-	ctx := c.Request.Context()
-	sessionID := c.Param("id")
-	user := currentUser(c)
-	content := strings.TrimSpace(req.Content)
-
-	// Safety runs before anything is generated, and before this message can influence retrieval or memory.
-	verdict := s.filter.Check(ctx, content)
-
-	userMsgID, err := s.store.AddMessage(ctx, sessionID, "user", content, verdict.IsCrisis(), verdict.Score)
-	if err != nil {
-		fail(c, err, "could not save message")
-		return
-	}
-
-	if verdict.IsCrisis() {
-		if err := s.store.FlagCrisis(ctx, userMsgID, verdict.MatchedRule, verdict.Score); err != nil {
-			slog.Error("flag crisis", "err", err) // audit failure must not swallow the response
-		}
-		// The LLM is never called. Because the row is stored with crisis_flagged=true
-		// RecentMessages excludes it and neither the prompt window nor the session summary will ever contain it.
-		if _, err := s.store.AddMessage(ctx, sessionID, "assistant", safety.CrisisResponse, true, verdict.Score); err != nil {
-			slog.Error("save crisis reply", "err", err)
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"reply": safety.CrisisResponse, "crisis": true, "sources": []any{},
-		})
-		return
-	}
-
-	answer, err := s.engine.Answer(ctx, user.ID, sessionID, content)
+	res, err := s.agent.Handle(c.Request.Context(), agent.Turn{
+		UserID:    currentUser(c).ID,
+		SessionID: c.Param("id"),
+		Content:   strings.TrimSpace(req.Content),
+	})
 	if err != nil {
 		fail(c, err, "could not generate a reply")
 		return
 	}
 
-	replyID, err := s.store.AddMessage(ctx, sessionID, "assistant", answer.Text, false, 0)
-	if err != nil {
-		fail(c, err, "could not save reply")
-		return
-	}
+	body := gin.H{"reply": res.Reply, "crisis": res.Crisis, "sources": res.Sources}
+	if res.RecommendationID != "" {
+		body["recommendationId"] = res.RecommendationID
+ 	}
 
-	recID, err := s.store.SaveRecommendation(ctx, sessionID, replyID, answer.ChunkIDs)
-	if err != nil {
-		slog.Error("save recommendation", "err", err)
-	}
-
-	_ = s.store.TouchSession(ctx, sessionID)
-	// The first user message doubles as the sidebar title.
-	if n, _ := s.store.CountMessages(ctx, sessionID); n <= 2 {
-		_ = s.store.SetSessionTitleIfEmpty(ctx, sessionID, truncate(content, 60))
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"reply":            answer.Text,
-		"crisis":           false,
-		"recommendationId": recID,
-		"sources":          answer.Sources,
-	})
+	c.JSON(http.StatusOK, body)
 }
 
 // handleEndSession enqueues the summary job and returns straight away
@@ -193,6 +156,10 @@ func (s *Server) handleFeedback(c *gin.Context) {
 	}
 	err := s.store.SaveFeedback(c.Request.Context(), req.RecommendationID,
 		currentUser(c).ID, req.Rating, req.Comment)
+	if errors.Is(err, store.ErrNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "reply not found"})
+		return
+	}
 	if err != nil {
 		fail(c, err, "could not save feedback")
 		return

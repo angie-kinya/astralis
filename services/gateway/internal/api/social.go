@@ -35,7 +35,7 @@ func (s *Server) handleSetHandle(c *gin.Context) {
 	if !handleRe.MatchString(h) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "invalid_handle",
-			"message": "3–24 characters: letters, numbers, spaces, hyphens or underscores.",
+			"message": "Use 3 to 24 characters. Letters, numbers, spaces, hyphens and underscores only.",
 		})
 		return
 	}

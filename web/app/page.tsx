@@ -23,7 +23,7 @@ const MECHANISM = [
   {
     k: "memory",
     t: "It remembers your thread",
-    d: "A short factual summary per session, retrieved as context next time. Rows in Postgres — auditable, and deletable in one click.",
+    d: "A short factual summary per session, retrieved as context next time. Stored as rows in Postgres, auditable and deletable in one click.",
   },
   {
     k: "feedback",
@@ -33,7 +33,7 @@ const MECHANISM = [
   {
     k: "safety",
     t: "It knows its limits",
-    d: "A rules-plus-classifier filter runs before the model. Flagged messages never reach it, never enter retrieval, never enter memory — they get a fixed card written by a person.",
+    d: "A rules-plus-classifier filter runs before the model. Flagged messages never reach it, never enter retrieval, never enter memory. They get a fixed card written by a person.",
   },
 ];
 
@@ -57,10 +57,10 @@ export default async function Landing() {
           </h1>
 
           <p className="mt-6 max-w-measure text-[1rem] leading-[1.72] text-ink-2">
-            Astralis is a reflection companion for burnout and work stress. It grounds
-            what it says in published research rather than its own confidence, keeps
-            track of your thread between conversations, and connects you with other
-            people using it — under whatever name you choose.
+            Astralis is a reflection companion for burnout and work stress. When evidence
+            would help, it draws on published research. It keeps track of your thread
+            between conversations and connects you with other people using it, under
+            whatever name you choose.
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -69,9 +69,9 @@ export default async function Landing() {
               <span aria-hidden className="font-mono">›</span>
             </Link>
             <span className="font-mono text-[.6875rem] leading-relaxed text-ink-3">
-              No account elsewhere needed. Nobody here
+              No account elsewhere needed. Others here see
               <br className="hidden sm:block" />
-              ever sees your email — only a name you choose.
+              only the name you choose, never your email.
             </span>
           </div>
         </section>
@@ -128,7 +128,7 @@ export default async function Landing() {
       <footer className="mx-auto max-w-4xl px-6 pb-10">
         <div className="hair mb-6" />
         <p className="font-mono text-[.6875rem] leading-relaxed text-ink-3">
-          Experimental project — not a substitute for professional care. In immediate
+          Experimental project. Not a substitute for professional care. In immediate
           danger, call 999 or 112. Kenya: Befrienders +254&nbsp;722&nbsp;178&nbsp;177.
         </p>
       </footer>

@@ -14,7 +14,7 @@ import {
 } from "@/lib/api";
 
 const OPENERS = [
-  "Tell me how work has actually been — not how you would describe it in a stand-up.",
+  "Tell me how work has actually been. Leave out the version you would give in a stand-up.",
   "What has been draining you lately, and what have you already tried?",
   "Is there something about work you keep turning over and never resolving?",
 ];
@@ -153,7 +153,7 @@ function Opener() {
       </p>
       <p className="reply text-ink-2">{line}</p>
       <p className="mt-4 font-mono text-[.625rem] leading-relaxed text-ink-3">
-        whatever you write is grounded against published research before it is answered.
+        when published research would help, astralis looks it up before it answers.
         ask &ldquo;what does the evidence actually say?&rdquo; at any point.
       </p>
     </div>

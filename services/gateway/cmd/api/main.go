@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"astralis/gateway/internal/agent"
 	"astralis/gateway/internal/api"
 	"astralis/gateway/internal/config"
 	"astralis/gateway/internal/embed"
 	"astralis/gateway/internal/llm"
 	"astralis/gateway/internal/mail"
-	"astralis/gateway/internal/rag"
 	"astralis/gateway/internal/safety"
 	"astralis/gateway/internal/store"
 
@@ -44,7 +44,6 @@ func main() {
 
 	embedder := embed.NewOpenAI(cfg.OpenAIAPIKey, cfg.EmbedModel, cfg.EmbedDim)
 	claude := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ClaudeModel)
-	engine := rag.NewEngine(db, embedder, claude, 5)
 
 	// NewHTTPClassifier returns nil when unconfigured; the filter handles that.
 	var clf safety.Classifier
@@ -52,6 +51,12 @@ func main() {
 		clf = h
 	}
 	filter := safety.NewFilter(clf, cfg.SafetyThreshold)
+
+	brain := agent.New(db, embedder, claude, filter, agent.Config{
+		AnalystModel:  cfg.AnalystModel,
+		RespondEffort: cfg.RespondEffort,
+		MinSimilarity: cfg.MinSimilarity,
+	})
 
 	// The queue is optional. On a single droplet there is no Redis, and
 	// cmd/summarise does the same work from cron.
@@ -71,7 +76,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           api.NewServer(cfg, db, engine, filter, queue, mailer).Router(),
+		Handler:           api.NewServer(cfg, db, brain, filter, queue, mailer).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

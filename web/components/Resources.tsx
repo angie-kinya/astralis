@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 
-import { HELPLINES, PRACTICES, READING, RESEARCH, type Link, type Practice } from "@/lib/resources";
+import Pacer from "@/components/Pacer";
+import Reading from "@/components/Reading";
+import RippleCard from "@/components/RippleCard";
+import { HELPLINES, PRACTICES, RESEARCH, type Link, type Practice } from "@/lib/resources";
 
 type Tab = "practices" | "reading" | "research" | "help";
 
@@ -52,7 +55,7 @@ export default function Resources() {
               {PRACTICES.map((p) => <PracticeCard key={p.name} p={p} />)}
             </div>
           )}
-          {tab === "reading"  && <LinkList items={READING} />}
+          {tab === "reading"  && <Reading />}
           {tab === "research" && <LinkList items={RESEARCH} />}
           {tab === "help" && (
             <>
@@ -70,34 +73,39 @@ export default function Resources() {
 }
 
 function PracticeCard({ p }: { p: Practice }) {
-  const [open, setOpen] = useState(false);
   return (
-    <article className="card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="font-sans text-[.9375rem] font-medium leading-snug">{p.name}</h2>
-        <span className="tag shrink-0">{p.minutes}</span>
-      </div>
-      <p className="mt-2.5 text-[.8125rem] leading-[1.65] text-ink-2">{p.why}</p>
-
-      <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
-              className="mt-3 font-mono text-[.625rem] uppercase tracking-[.12em]
-                         text-violet-2 hover:text-violet">
-        {open ? "hide steps" : "show steps"}
-      </button>
-
-      {open && (
-        <ol className="mt-3 space-y-1.5 border-l border-line pl-3.5 animate-fade">
-          {p.steps.map((s, i) => (
-            <li key={i} className="flex gap-2.5 text-[.8125rem] leading-relaxed text-ink-2">
-              <span className="font-mono text-[.625rem] tabular-nums text-ink-3">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <span>{s}</span>
-            </li>
-          ))}
-        </ol>
+    <RippleCard
+      label={`Show steps for ${p.name}`}
+      announce={`${p.name}. ${p.steps.map((s, i) => `Step ${i + 1}: ${s}`).join(" ")}`}
+      front={
+        <>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="font-sans text-[.9375rem] font-medium leading-snug">{p.name}</h2>
+            <span className="tag shrink-0">{p.minutes}</span>
+          </div>
+          <p className="mt-2.5 text-[.8125rem] leading-[1.65] text-ink-2">{p.why}</p>
+          <p className="mt-auto pt-3 font-mono text-[.625rem] uppercase tracking-[.12em] text-violet-2">
+            tap to see the steps
+          </p>
+        </>
+      }
+      back={(open) => (
+        <>
+          <h3 className="-mt-4 pr-16 font-sans text-[.9375rem] font-medium leading-snug">{p.name}</h3>
+          <ol className="mt-3 space-y-1.5 border-l border-line pl-3.5">
+            {p.steps.map((s, i) => (
+              <li key={i} className="flex gap-2.5 text-[.8125rem] leading-relaxed text-ink-2">
+                <span className="font-mono text-[.625rem] tabular-nums text-ink-3">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ol>
+          {p.pace && <Pacer pace={p.pace} active={open} />}
+        </>
       )}
-    </article>
+    />
   );
 }
 

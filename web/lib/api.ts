@@ -128,3 +128,12 @@ export type SendResult = {
   recommendationId?: string;
   sources: Source[];
 };
+
+export type LatestItem = {
+  title: string;
+  source: string;
+  category: "finance" | "tech" | "business";
+  publishedAt: string;
+  summary: string;
+  url: string;
+};

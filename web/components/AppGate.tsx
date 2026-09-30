@@ -90,7 +90,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
           <footer role="note"
                   className="shrink-0 border-t border-line px-4 py-1.5 text-center
                              font-mono text-[.625rem] leading-relaxed text-ink-3">
-            Experimental research project — not therapy, diagnosis, or a crisis service.
+            Experimental research project. Not therapy, diagnosis, or a crisis service.
             <span className="hidden sm:inline"> · 999 / 112 · Befrienders Kenya +254 722 178 177</span>
           </footer>
         </div>

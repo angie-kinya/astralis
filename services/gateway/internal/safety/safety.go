@@ -95,21 +95,21 @@ func (f *Filter) Check(ctx context.Context, text string) Result {
 
 // CrisisResponse is fixed text. Never generated, never varied, never A/B
 // tested. Kenyan numbers first, because that is where the beta users are.
-const CrisisResponse = `It sounds like you may be going through something very heavy right now, and I want to be honest with you: Astralis is a research and reflection tool, not a crisis service, and I am not the right support for this moment.
+const CrisisResponse = `It sounds like you may be going through something very heavy right now. I want to be honest with you. Astralis is a research and reflection tool, not a crisis service, and I am not the right support for this moment.
 
 Please reach out to someone who can help properly:
 
 **Kenya**
-- Befrienders Kenya — +254 722 178 177
-- Kenya Red Cross counselling — toll free 1199
-- Emergency services — 999 or 112
+- Befrienders Kenya on +254 722 178 177
+- Kenya Red Cross counselling, toll free 1199
+- Emergency services on 999 or 112
 
 **International**
 - findahelpline.com lists free, confidential helplines by country
 
 If you are in immediate danger, please contact emergency services or go to the nearest hospital.
 
-If you would like, tell someone you trust today — a friend, family member, or your doctor. I will still be here afterwards to talk about work stress and burnout whenever you want.`
+If you would like, tell someone you trust today. That could be a friend, a family member, or your doctor. I will still be here afterwards to talk about work stress and burnout whenever you want.`
 
 // ------------------------------------------------------------ HTTP classifier
 

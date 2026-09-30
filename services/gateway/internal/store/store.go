@@ -60,7 +60,11 @@ func scanUser(row pgx.Row) (User, error) {
 	return u, err
 }
 
-func (u User) HasConsented() bool { return u.ConsentVersion != nil }
+// HasConsentedTo reports whether the person accepted this exact version of
+// the terms. Agreeing to an older version is not agreeing to what changed.
+func (u User) HasConsentedTo(version string) bool {
+	return u.ConsentVersion != nil && *u.ConsentVersion == version
+}
 
 // HasHandle reports whether onboarding is complete. Chat is gated on it: the
 // agent asks what to call you before it asks anything else.
@@ -87,7 +91,14 @@ type Chunk struct {
 	URL     string  `json:"url"`
 	Year    *int    `json:"year"`
 	Score   float64 `json:"score"`
+	// Similarity is the raw cosine similarity before feedback weighting. The
+	// agent uses it to refuse passages that are only vaguely related.
+	Similarity float64 `json:"-"`
 }
+
+// ErrNotFound means the row does not exist or does not belong to the caller
+// The two are deliberately indistinguishable to the client
+var ErrNotFound = errors.New("not found")
 
 // users
 func (s *Store) GrantConsent(ctx context.Context, userID, version string) error {
@@ -196,17 +207,26 @@ func (s *Store) CountMessages(ctx context.Context, sessionID string) (int, error
 }
 
 // retrieve chunks for RAG
-// SearchChunks does weighted vector search. Cosine distance from pgvector is
-// converted to similarity, then multiplied by helpful_weight, so material that
-// users found helpful gradually outranks material that they didn't
-func (s *Store) SearchChunks(ctx context.Context, vec []float32, limit int) ([]Chunk, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT c.id, c.content, d.title, COALESCE(d.url,''), d.year,
-		       (1 - (c.embedding <=> $1::vector)) * c.helpful_weight AS score
-		FROM research_chunks c
-		JOIN research_docs d ON d.id = c.doc_id
+// SearchChunks does weighted vector search in two steps
+// the inner query orders by raw distance, which is the only ordering the HNSW
+// index can serve, and takes a generous candidate pool. the outer query drops
+// anything below minSim and re-ranks the rest by similarity times
+// helpful_weight. ordering by the weighted score directly (as the first
+// version did) forces a full scan of every chunk on every message
+func (s *Store) SearchChunks(ctx context.Context, vec []float32, k int, minSim float64) ([]Chunk, error) {
+ 	rows, err := s.pool.Query(ctx, `
+		SELECT id, content, title, url, year, similarity, similarity * helpful_weight AS score
+		FROM (
+			SELECT c.id, c.content, d.title, COALESCE(d.url,'') AS url, d.year, c.helpful_weight,
+			       1 - (c.embedding <=> $1::vector) AS similarity
+			FROM research_chunks c
+			JOIN research_docs d ON d.id = c.doc_id
+			ORDER BY c.embedding <=> $1::vector
+			LIMIT $2
+		) nearest
+		WHERE similarity >= $3
 		ORDER BY score DESC
-		LIMIT $2`, Vector(vec), limit)
+		LIMIT $4`, Vector(vec), k*4, minSim, k)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +235,7 @@ func (s *Store) SearchChunks(ctx context.Context, vec []float32, limit int) ([]C
 	var out []Chunk
 	for rows.Next() {
 		var c Chunk
-		if err := rows.Scan(&c.ID, &c.Content, &c.Title, &c.URL, &c.Year, &c.Score); err != nil {
+		if err := rows.Scan(&c.ID, &c.Content, &c.Title, &c.URL, &c.Year, &c.Similarity, &c.Score); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -260,20 +280,51 @@ func (s *Store) SessionUser(ctx context.Context, sessionID string) (string, erro
 }
 
 // feedback
-func (s *Store) SaveRecommendation(ctx context.Context, sessionID, messageID string, chunkIDs []string) (string, error) {
+func (s *Store) SaveRecommendation(ctx context.Context, sessionID, messageID string, chunkIDs, citedIDs []string) (string, error) {
+	if chunkIDs == nil {
+		chunkIDs = []string{}
+	}
+	if citedIDs == nil {
+		citedIDs = []string{}
+	}
 	var id string
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO recommendations (session_id, message_id, source_chunk_ids)
-		VALUES ($1,$2,$3) RETURNING id`, sessionID, messageID, chunkIDs).Scan(&id)
+		INSERT INTO recommendations (session_id, message_id, source_chunk_ids, cited_chunk_ids)
+		VALUES ($1,$2,$3,$4) RETURNING id`, sessionID, messageID, chunkIDs, citedIDs).Scan(&id)
 	return id, err
 }
 
+// SaveFeedback records a rating and nudges the weight of the passages behind the reply
+//  - ownership: the recommendation must belong to one of the caller's own
+//     sessions, otherwise anyone holding a uuid could steer retrieval
+//  - delta, not total. changing a thumbs up to a thumbs down moves the weight
+//     by the difference, and clicking the same thumb twice moves it by zero
+//     the first version added the full amount on every click
+//  - credit goes to cited passages when there are any. retrieved but uncited
+//     passages did not shape the reply and should not be judged by it
 func (s *Store) SaveFeedback(ctx context.Context, recID, userID string, rating int, comment string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	// FOR UPDATE serialises two quick clicks on the same reply, so both read
+	// the correct previous rating instead of racing
+	var prev int
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(f.rating, 0)
+		FROM recommendations r
+		JOIN sessions s ON s.id = r.session_id AND s.user_id = $2
+		LEFT JOIN feedback f ON f.recommendation_id = r.id AND f.user_id = $2
+		WHERE r.id = $1
+		FOR UPDATE OF r`, recID, userID).Scan(&prev)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO feedback (recommendation_id, user_id, rating, comment)
@@ -287,13 +338,17 @@ func (s *Store) SaveFeedback(ctx context.Context, recID, userID string, rating i
 	// Small learning rate, hard clamp. Bounded updates keep one grumpy user
 	// from burying a good source, and one enthusiast from dominating retrieval.
 	const lr = 0.05
-	if _, err := tx.Exec(ctx, `
-		UPDATE research_chunks
-		SET helpful_weight = LEAST(1.5, GREATEST(0.5, helpful_weight + $2))
-		WHERE id = ANY(
-			SELECT unnest(source_chunk_ids) FROM recommendations WHERE id = $1
-		)`, recID, float64(rating)*lr); err != nil {
-		return err
+	if delta := rating - prev; delta != 0 {
+		if _, err := tx.Exec(ctx, `
+			UPDATE research_chunks
+			SET helpful_weight = LEAST(1.5, GREATEST(0.5, helpful_weight + $2))
+			WHERE id = ANY(
+				SELECT unnest(CASE WHEN cardinality(cited_chunk_ids) > 0
+				                   THEN cited_chunk_ids ELSE source_chunk_ids END)
+				FROM recommendations WHERE id = $1
+			)`, recID, float64(delta)*lr); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
