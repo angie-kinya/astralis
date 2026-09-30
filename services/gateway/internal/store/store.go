@@ -40,9 +40,11 @@ func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 // on their own settings page; it must never be copied into any type that is
 // serialised for another user (see Peer in social.go, which has no email).
 type User struct {
-	ID             string
-	Email          string
-	ConsentVersion *string
+	ID    string
+	Email string
+	// ConsentedAt is when the person last accepted the participation terms.
+	// Nil until they do. Compare it with the date the terms last changed.
+	ConsentedAt *time.Time
 
 	// Handle is the anonymous name other users see. Nil until onboarding.
 	Handle         *string
@@ -52,18 +54,19 @@ type User struct {
 
 // userCols is the one column list every user query scans, so adding a field
 // means changing one string and one Scan call rather than hunting for queries.
-const userCols = "id, email, consent_version, handle, peer_opt_in, notify_releases"
+const userCols = "id, email, consent_given_at, handle, peer_opt_in, notify_releases"
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.ConsentVersion, &u.Handle, &u.PeerOptIn, &u.NotifyReleases)
+	err := row.Scan(&u.ID, &u.Email, &u.ConsentedAt, &u.Handle, &u.PeerOptIn, &u.NotifyReleases)
 	return u, err
 }
 
-// HasConsentedTo reports whether the person accepted this exact version of
-// the terms. Agreeing to an older version is not agreeing to what changed.
-func (u User) HasConsentedTo(version string) bool {
-	return u.ConsentVersion != nil && *u.ConsentVersion == version
+// ConsentedSince reports whether the person accepted the terms on or after
+// termsUpdated. Agreeing before the terms last changed is not agreeing to
+// what changed, so it does not count.
+func (u User) ConsentedSince(termsUpdated time.Time) bool {
+	return u.ConsentedAt != nil && !u.ConsentedAt.Before(termsUpdated)
 }
 
 // HasHandle reports whether onboarding is complete. Chat is gated on it: the
@@ -101,11 +104,14 @@ type Chunk struct {
 var ErrNotFound = errors.New("not found")
 
 // users
-func (s *Store) GrantConsent(ctx context.Context, userID, version string) error {
-	_, err := s.pool.Exec(ctx,
-		`UPDATE users SET consent_version=$2, consent_given_at=now() WHERE id=$1`,
-		userID, version)
-	return err
+// GrantConsent records that the person accepted the terms now, and returns
+// the exact time stored, so the caller reports what the database holds.
+func (s *Store) GrantConsent(ctx context.Context, userID string) (time.Time, error) {
+	var at time.Time
+	err := s.pool.QueryRow(ctx,
+		`UPDATE users SET consent_given_at = now() WHERE id = $1 RETURNING consent_given_at`,
+		userID).Scan(&at)
+	return at, err
 }
 
 // delete user to honor "delete my data" requuests

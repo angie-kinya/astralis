@@ -76,8 +76,12 @@ export default function RippleCard({ label, front, back, announce, className = "
 
       <div id={layerId} role="region" aria-label={label} data-open={open}
            className="ripple-layer flex flex-col p-4">
+        {/* relative z-10: the back content may pull itself up beside this
+            button (a heading with a negative margin, say). Padding is still
+            part of an element's box, so without a stacking order that heading
+            would sit on top of the button and swallow every click on it. */}
         <button ref={closer} type="button" onClick={close}
-                className="self-end rounded font-mono text-[.625rem] uppercase tracking-[.12em]
+                className="relative z-10 self-end rounded font-mono text-[.625rem] uppercase tracking-[.12em]
                            text-ink-3 transition-colors duration-150 ease-swift hover:text-ink">
           close <span aria-hidden>×</span>
         </button>

@@ -69,7 +69,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     return <Solo><Onboarding onDone={(handle) => setMe({ ...me, handle })} /></Solo>;
   }
   if (!me.consented) {
-    return <Solo><Consent version={me.consentVersion} onAccepted={() => void refresh()} /></Solo>;
+    return <Solo><Consent termsUpdatedAt={me.termsUpdatedAt} onAccepted={() => void refresh()} /></Solo>;
   }
 
   return (

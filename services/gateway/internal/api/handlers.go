@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"astralis/gateway/internal/agent"
 	"astralis/gateway/internal/store"
@@ -13,13 +14,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ConsentVersion changes whenever the participation terms change. Everyone
-// who accepted an older version is asked again before their next message.
-// v2 adds the structured observations the agent records about each message.
-const ConsentVersion = "2026-10-v2"
+// TermsUpdatedAt is when the participation terms last changed. Anyone who
+// accepted before this moment is asked again before their next message.
+//
+// To change the terms: edit the consent sheet, then move this date to the day
+// the new terms go live. That is the whole procedure — no version label, and
+// every past consent keeps its real timestamp for the record.
+//
+// Current terms: the agent records structured observations about each message.
+var TermsUpdatedAt = time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)
 
 func (s *Server) handleMe(c *gin.Context) {
 	u := currentUser(c)
+	consented := u.ConsentedSince(TermsUpdatedAt)
+	// Only a consent to the CURRENT terms is reported; an older one would
+	// read as "agreed" on the settings page while chat stays locked.
+	var consentedAt *time.Time
+	if consented {
+		consentedAt = u.ConsentedAt
+	}
 	handle := ""
 	if u.Handle != nil {
 		handle = *u.Handle
@@ -28,7 +41,8 @@ func (s *Server) handleMe(c *gin.Context) {
 		// email is returned to its owner and nobody else. No other endpoint
 		// in this service ever serialises it.
 		"id": u.ID, "email": u.Email,
-		"consented": u.HasConsentedTo(ConsentVersion), "consentVersion": ConsentVersion,
+		"consented": consented, "consentedAt": consentedAt,
+		"termsUpdatedAt": TermsUpdatedAt,
 		"notifyReleases": u.NotifyReleases,
 		// handle drives onboarding: empty means Astralis has not yet asked
 		// what to call this person.
@@ -37,11 +51,12 @@ func (s *Server) handleMe(c *gin.Context) {
 }
 
 func (s *Server) handleConsent(c *gin.Context) {
-	if err := s.store.GrantConsent(c.Request.Context(), currentUser(c).ID, ConsentVersion); err != nil {
+	at, err := s.store.GrantConsent(c.Request.Context(), currentUser(c).ID)
+	if err != nil {
 		fail(c, err, "could not record consent")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"consented": true, "version": ConsentVersion})
+	c.JSON(http.StatusOK, gin.H{"consented": true, "consentedAt": at})
 }
 
 func (s *Server) handleDeleteMe(c *gin.Context) {

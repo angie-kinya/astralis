@@ -12,6 +12,16 @@ export function dayBucket(iso: string): string {
   return d.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 }
 
+/** "30 September 2026" */
+export function longDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** "30 September 2026, 14:02" */
+export function dateTime(iso: string): string {
+  return `${longDate(iso)}, ${timeOfDay(iso)}`;
+}
+
 export function timeOfDay(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }

@@ -63,7 +63,7 @@ func (s *Server) authenticate() gin.HandlerFunc {
 // requireConsent enforces the rule at the routing layer rather than trusting every handler to remember it.
 func (s *Server) requireConsent() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !currentUser(c).HasConsentedTo(ConsentVersion) {
+		if !currentUser(c).ConsentedSince(TermsUpdatedAt) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error":   "consent_required",
 				"message": "You must accept the participation terms before using Astralis.",

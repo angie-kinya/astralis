@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useMe } from "@/components/AppGate";
 import { ApiError, api, signOut } from "@/lib/api";
+import { dateTime } from "@/lib/format";
 
 /**
  * Identity, preferences and erasure in one place.
@@ -114,7 +115,7 @@ export default function SettingsPage() {
         <dl className="mt-3 divide-y divide-line rounded-xl border border-line bg-surface">
           {[
             ["Email", "To sign you in, and release notes if you asked. Visible only to you"],
-            ["Consent", me.consented ? `Given · version ${me.consentVersion}` : "Not given"],
+            ["Consent", me.consentedAt ? `Given ${dateTime(me.consentedAt)}` : "Not given"],
             ["Conversations", "Every message to Astralis and every reply"],
             ["Memory", "One short factual note per session, used as context"],
             ["Ratings", "Your helpful / not-helpful marks, which reweight retrieval"],

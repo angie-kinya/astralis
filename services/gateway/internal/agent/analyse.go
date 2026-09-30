@@ -121,6 +121,8 @@ func (a *Agent) analyse(ctx context.Context, history []store.Message) (Analysis,
 // parseAnalysis decodes and then distrusts. the schema should guarantee the
 // shape, but a refusal or a truncated reply can still arrive, and a value
 // outside the vocabulary must never reach the database
+const maxQueryRunes = 300
+
 func parseAnalysis(raw string) (Analysis, error) {
 	var an Analysis
 	if err := json.Unmarshal([]byte(raw), &an); err != nil {
@@ -138,6 +140,12 @@ func parseAnalysis(raw string) (Analysis, error) {
 	an.Resources = only(an.Resources, Resources)
 	an.Valence = max(-1, min(1, an.Valence))
 	an.SearchQuery = strings.TrimSpace(an.SearchQuery)
+	// The query is model-written text that the plan sends on to the embedder.
+	// Cap it: a real search query is a sentence, and an unbounded one (from a
+	// runaway reply or an injected instruction) would only cost money and fail.
+	if r := []rune(an.SearchQuery); len(r) > maxQueryRunes {
+		an.SearchQuery = string(r[:maxQueryRunes])
+	}
 	return an, nil
 }
 

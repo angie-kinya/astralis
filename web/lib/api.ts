@@ -71,7 +71,10 @@ export type Me = {
   /** Visible to its owner only. No endpoint returns another user's email. */
   email: string;
   consented: boolean;
-  consentVersion: string;
+  /** When they accepted the current terms; null if they have not. */
+  consentedAt: string | null;
+  /** When the terms last changed. Shown on the consent sheet. */
+  termsUpdatedAt: string;
   /** The anonymous name. Empty string means onboarding is not finished. */
   handle: string;
   peerOptIn: boolean;

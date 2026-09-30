@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -65,4 +66,11 @@ func TestRenumberCitations(t *testing.T) {
 	text, used = renumberCitations("No excerpts were given [1].", 0)
 	require.Equal(t, "No excerpts were given.", text)
 	require.Empty(t, used)
+}
+
+func TestSearchQueryIsCapped(t *testing.T) {
+	long := strings.Repeat("burnout ", 200) // 1,600 runes
+	an, err := parseAnalysis(`{"intent":"ask_evidence","needs_research":true,"search_query":"` + long + `"}`)
+	require.NoError(t, err)
+	require.Len(t, []rune(an.SearchQuery), maxQueryRunes)
 }
