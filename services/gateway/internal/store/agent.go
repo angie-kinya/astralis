@@ -103,7 +103,7 @@ func (s *Store) RecentSummaries(ctx context.Context, userID string, n int) ([]st
 
 // admin
 
-// Overview is the health of the agent over a time window, computed from agent_runs alone. 
+// Overview is the health of the agent over a time window, computed from agent_runs alone.
 // every field is an aggregate so no user is identifiable
 type Overview struct {
 	WindowHours      int      `json:"windowHours"`

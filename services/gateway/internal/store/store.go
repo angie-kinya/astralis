@@ -214,7 +214,7 @@ func (s *Store) CountMessages(ctx context.Context, sessionID string) (int, error
 // helpful_weight. ordering by the weighted score directly (as the first
 // version did) forces a full scan of every chunk on every message
 func (s *Store) SearchChunks(ctx context.Context, vec []float32, k int, minSim float64) ([]Chunk, error) {
- 	rows, err := s.pool.Query(ctx, `
+	rows, err := s.pool.Query(ctx, `
 		SELECT id, content, title, url, year, similarity, similarity * helpful_weight AS score
 		FROM (
 			SELECT c.id, c.content, d.title, COALESCE(d.url,'') AS url, d.year, c.helpful_weight,
@@ -295,12 +295,12 @@ func (s *Store) SaveRecommendation(ctx context.Context, sessionID, messageID str
 }
 
 // SaveFeedback records a rating and nudges the weight of the passages behind the reply
-//  - ownership: the recommendation must belong to one of the caller's own
+//   - ownership: the recommendation must belong to one of the caller's own
 //     sessions, otherwise anyone holding a uuid could steer retrieval
-//  - delta, not total. changing a thumbs up to a thumbs down moves the weight
+//   - delta, not total. changing a thumbs up to a thumbs down moves the weight
 //     by the difference, and clicking the same thumb twice moves it by zero
 //     the first version added the full amount on every click
-//  - credit goes to cited passages when there are any. retrieved but uncited
+//   - credit goes to cited passages when there are any. retrieved but uncited
 //     passages did not shape the reply and should not be judged by it
 func (s *Store) SaveFeedback(ctx context.Context, recID, userID string, rating int, comment string) error {
 	tx, err := s.pool.Begin(ctx)

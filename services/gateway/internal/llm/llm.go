@@ -25,9 +25,9 @@ type Client interface {
 type Request struct {
 	// model overrides the client's default model for this call
 	// the agent uses it to sedn analysis to a small fast model and replies to a larger one
-	Model string
-	System string
-	Messages []Message
+	Model     string
+	System    string
+	Messages  []Message
 	MaxTokens int
 	// when schema is set, it constrains the reply to json that matches it
 	Schema map[string]any
@@ -35,14 +35,14 @@ type Request struct {
 }
 
 type Usage struct {
-	InputTokens int `json:"input_tokens"`
+	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
 }
 
 type Response struct {
-	Text string
+	Text       string
 	StopReason string
-	Usage Usage
+	Usage      Usage
 }
 
 type Anthropic struct {
@@ -70,20 +70,20 @@ func NewAnthropic(apiKey, model string) *Anthropic {
 
 type outputConfig struct {
 	Format *outputFormat `json:"format,omitempty"`
-	Effort string `json:"effort,omitempty"`
+	Effort string        `json:"effort,omitempty"`
 }
 
 type outputFormat struct {
-	Type string `json:"type"`
+	Type   string         `json:"type"`
 	Schema map[string]any `json:"schema"`
 }
 
 type reqBody struct {
-	Model     string    `json:"model"`
-	MaxTokens int       `json:"max_tokens"`
-	System    string    `json:"system,omitempty"`
-	Messages  []Message `json:"messages"`
-	outputConfig *outputConfig `json:"output_config,omitempty"`
+	Model        string        `json:"model"`
+	MaxTokens    int           `json:"max_tokens"`
+	System       string        `json:"system,omitempty"`
+	Messages     []Message     `json:"messages"`
+	OutputConfig *outputConfig `json:"output_config,omitempty"`
 }
 
 type respBody struct {
@@ -92,8 +92,8 @@ type respBody struct {
 		Text string `json:"text"`
 	} `json:"content"`
 	StopReason string `json:"stop_reason"`
-	Usage Usage `json:"usage"`
-	Error *struct {
+	Usage      Usage  `json:"usage"`
+	Error      *struct {
 		Message string `json:"message"`
 	} `json:"error"`
 }

@@ -116,8 +116,7 @@ func TestStripHTML(t *testing.T) {
 		{"<script>alert(1)</script>Safe", "Safe"},
 		{"<style>p{color:red}</style>Text", "Text"},
 		{"&lt;p&gt;Double &lt;i&gt;escaped&lt;/i&gt;&lt;/p&gt;", "Double escaped"},
-		{"  lots
-	of   space  ", "lots of space"},
+		{"  lots\n\tof   space  ", "lots of space"},
 		{"caf&eacute; &#8217;quoted&#8217;", "café ’quoted’"},
 	}
 	for _, c := range cases {
