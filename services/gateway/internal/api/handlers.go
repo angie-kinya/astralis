@@ -114,7 +114,7 @@ func (s *Server) handleSendMessage(c *gin.Context) {
 	body := gin.H{"reply": res.Reply, "crisis": res.Crisis, "sources": res.Sources}
 	if res.RecommendationID != "" {
 		body["recommendationId"] = res.RecommendationID
- 	}
+	}
 
 	c.JSON(http.StatusOK, body)
 }

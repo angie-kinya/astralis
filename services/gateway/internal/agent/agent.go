@@ -34,11 +34,11 @@ type Model interface {
 
 type Config struct {
 	// analyst model reads each message, small and fast, and runs on every turn
-	AnalystModel string
+	AnalystModel  string
 	RespondEffort string
-	TopK int
+	TopK          int
 	//the floor below which a passage is not relevant enough to put in front of the model:
-	MinSimilarity float64
+	MinSimilarity  float64
 	AnalyseTimeout time.Duration
 }
 
