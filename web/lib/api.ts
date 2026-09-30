@@ -16,6 +16,25 @@ export class ApiError extends Error {
   get handleTaken()  { return this.code === "handle_taken"; }
 }
 
+/**
+ * The only way an error becomes text on screen.
+ *
+ * ApiError messages were written by the server, for people ("That code is
+ * wrong or has expired"), so they are shown as they are. Anything else is
+ * either the network or a bug in this code — "Cannot read properties of null"
+ * is meaningless and alarming to the person reading it. They get a plain
+ * sentence; the real error goes to the console, where a developer can see it.
+ */
+export function userMessage(e: unknown, fallback = "Something went wrong. Try again in a moment."): string {
+  if (e instanceof ApiError) return e.message;
+  console.error(e);
+  // fetch rejects with a TypeError when the request never reached a server.
+  if (e instanceof TypeError && /fetch|network/i.test(e.message)) {
+    return "Could not reach Astralis. Check your connection and try again.";
+  }
+  return fallback;
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     ...init,

@@ -6,7 +6,7 @@ import Composer from "@/components/Composer";
 import CrisisNotice from "@/components/CrisisNotice";
 import { useMe } from "@/components/AppGate";
 import { IconBack, IconCircle } from "@/components/icons";
-import { api, type Peer, type PeerMessage } from "@/lib/api";
+import { api, type Peer, type PeerMessage, userMessage } from "@/lib/api";
 import { relative, timeOfDay } from "@/lib/format";
 
 /**
@@ -259,4 +259,4 @@ function OptInGate({ onJoin, error }: { onJoin: () => void; error: string | null
   );
 }
 
-function msg(e: unknown) { return e instanceof Error ? e.message : "Something went wrong."; }
+const msg = (e: unknown) => userMessage(e);

@@ -194,7 +194,10 @@ func (s *Store) RecentMessages(ctx context.Context, sessionID string, n int) ([]
 	}
 	defer rows.Close()
 
-	var out []Message
+	// Start from an empty slice, never a nil one. encoding/json writes a nil
+	// slice as null, so a brand-new session would reach the client as
+	// {"messages": null} and crash anything that maps over it.
+	out := []Message{}
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
@@ -238,7 +241,7 @@ func (s *Store) SearchChunks(ctx context.Context, vec []float32, k int, minSim f
 	}
 	defer rows.Close()
 
-	var out []Chunk
+	out := []Chunk{} // empty, not nil: see RecentMessages
 	for rows.Next() {
 		var c Chunk
 		if err := rows.Scan(&c.ID, &c.Content, &c.Title, &c.URL, &c.Year, &c.Similarity, &c.Score); err != nil {

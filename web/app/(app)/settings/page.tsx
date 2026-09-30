@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { useMe } from "@/components/AppGate";
-import { ApiError, api, signOut } from "@/lib/api";
+import { ApiError, api, signOut, userMessage } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 
 /**
@@ -41,7 +41,7 @@ export default function SettingsPage() {
     try {
       await api(path, { method: "POST", body: JSON.stringify({ [field]: value }) });
       setMe({ ...me, [field]: value });
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not update that."); }
+    } catch (e) { setError(userMessage(e, "Could not update that.")); }
   }
 
   async function destroy() {
@@ -50,7 +50,7 @@ export default function SettingsPage() {
       await api("/me", { method: "DELETE" });
       window.location.assign("/");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Deletion failed.");
+      setError(userMessage(e, "Deletion failed. Nothing was deleted; try again."));
       setBusy(false);
     }
   }

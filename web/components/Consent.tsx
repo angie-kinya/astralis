@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { api, signOut } from "@/lib/api";
+import { api, signOut, userMessage } from "@/lib/api";
 import { longDate } from "@/lib/format";
 
 /**
@@ -79,7 +79,7 @@ export default function Consent({ termsUpdatedAt, onAccepted }: {
       await api("/consent", { method: "POST" });
       onAccepted();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      setError(userMessage(e));
       setBusy(false);
     }
   }

@@ -10,7 +10,7 @@ import { useMe } from "@/components/AppGate";
 import { IconMenu } from "@/components/icons";
 import {
   ApiError, api, endSessionOnUnload,
-  type SendResult, type SessionSummary, type StoredMessage,
+  type SendResult, type SessionSummary, type StoredMessage, userMessage,
 } from "@/lib/api";
 
 const OPENERS = [
@@ -36,7 +36,8 @@ export default function Workspace() {
     setActiveId(id); setTurns([]); setError(null);
     try {
       const { messages } = await api<{ messages: StoredMessage[] }>(`/sessions/${id}/messages`);
-      setTurns(messages.map((m) => ({ key: m.id, role: m.role, content: m.content })));
+      // ?? []: an empty conversation must render as empty, whatever the server sends.
+      setTurns((messages ?? []).map((m) => ({ key: m.id, role: m.role, content: m.content })));
     } catch (e) { setError(msg(e)); }
   }, []);
 
@@ -160,7 +161,7 @@ function Opener() {
   );
 }
 
-function msg(e: unknown) { return e instanceof Error ? e.message : "Something went wrong."; }
+const msg = (e: unknown) => userMessage(e);
 function truncate(s: string, n: number) {
   return [...s].length <= n ? s : [...s].slice(0, n).join("") + "…";
 }

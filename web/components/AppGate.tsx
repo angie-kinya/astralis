@@ -7,7 +7,7 @@ import Onboarding from "@/components/Onboarding";
 import Rail from "@/components/Rail";
 import ThemeToggle from "@/components/ThemeToggle";
 import Wordmark from "@/components/Wordmark";
-import { ApiError, api, type Me } from "@/lib/api";
+import { ApiError, api, type Me, userMessage } from "@/lib/api";
 
 type Ctx = { me: Me; refresh: () => Promise<void>; setMe: (m: Me) => void };
 const MeContext = createContext<Ctx | null>(null);
@@ -36,7 +36,7 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     try { setMe(await api<Me>("/me")); }
     catch (e) {
       if (e instanceof ApiError && e.signedOut) return; // api() is already redirecting
-      setError(e instanceof Error ? e.message : "Could not reach Astralis.");
+      setError(userMessage(e, "Could not reach Astralis. Try refreshing."));
     }
   }, []);
 

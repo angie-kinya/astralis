@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { IconPlus } from "@/components/icons";
-import { api, type Note } from "@/lib/api";
+import { api, type Note, userMessage } from "@/lib/api";
 import { relative } from "@/lib/format";
 
 /**
@@ -151,4 +151,4 @@ export default function Notes() {
   );
 }
 
-function msg(e: unknown) { return e instanceof Error ? e.message : "Something went wrong."; }
+const msg = (e: unknown) => userMessage(e);
