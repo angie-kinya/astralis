@@ -176,7 +176,7 @@ export default function SignIn() {
  */
 function Privacy() {
   const lines = [
-    ["Nobody else here ever sees it.", "Other people see only the name you choose next — in the circle, beside your messages, everywhere. Your email is never shown, listed, or linked to that name for anyone but you."],
+    ["Nobody else here ever sees it.", "Other people see only the name you choose next. That applies in the circle, beside your messages, and everywhere else. Your email is never shown, listed, or linked to that name for anyone but you."],
     ["It is only for signing in.", "And for release notes, if you ticked the box. No newsletters, no marketing, never shared or sold."],
     ["One provider handles delivery.", "Codes are sent through Resend, an email service, which sees the address only to deliver the message."],
     ["It goes when you go.", "Delete your account under You and the address is erased with everything else."],

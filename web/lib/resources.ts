@@ -18,7 +18,7 @@ export const HELPLINES: Link[] = [
     href: "tel:+254722178177",
   },
   {
-    label: "Kenya Red Cross — counselling",
+    label: "Kenya Red Cross counselling",
     detail: "Toll free, 24 hours. Dial 1199",
     href: "tel:1199",
   },
@@ -34,44 +34,263 @@ export const HELPLINES: Link[] = [
   },
 ];
 
-export const READING: Link[] = [
+export type ReadingCategory = "health" | "science" | "work";
+
+export type Article = {
+  title: string;
+  source: string;
+  category: ReadingCategory;
+  /** One sentence, in our words. */
+  summary: string;
+  /** Approximate, at about 230 words a minute. */
+  minutes: number;
+  url: string;
+};
+
+/**
+ * Articles that open straight away: free, no paywall, no sign-up, no app.
+ * Every URL was opened and read before it went in.
+ */
+export const ARTICLES: Article[] = [
+  // Health and mind
   {
-    label: "Burnout: The Secret to Unlocking the Stress Cycle",
-    detail: "Emily Nagoski & Amelia Nagoski — on completing the stress cycle, not just removing stressors",
-    href: "https://openlibrary.org/search?q=Burnout+Nagoski",
+    title: "What to do when racing thoughts keep you up at night",
+    source: "Psyche",
+    category: "health",
+    summary: "Fighting your thoughts or forcing sleep tends to backfire, so this guide offers gentler ways to put some distance between you and night-time worry.",
+    minutes: 8,
+    url: "https://psyche.co/guides/what-to-do-when-racing-thoughts-keep-you-up-at-night",
   },
   {
-    label: "Can't Even: How Millennials Became the Burnout Generation",
-    detail: "Anne Helen Petersen — burnout as a structural condition rather than a personal failing",
-    href: "https://openlibrary.org/search?q=Can%27t+Even+Anne+Helen+Petersen",
+    title: "How to overcome insomnia by breaking your behaviour patterns",
+    source: "Psyche",
+    category: "health",
+    summary: "Insomnia is very treatable, and changing your sleep habits works better than pills or potions.",
+    minutes: 18,
+    url: "https://psyche.co/guides/how-to-overcome-insomnia-by-breaking-your-behaviour-patterns",
   },
   {
-    label: "Rest: Why You Get More Done When You Work Less",
-    detail: "Alex Soojung-Kim Pang — the research case that recovery is work, not its absence",
-    href: "https://openlibrary.org/search?q=Rest+Alex+Soojung-Kim+Pang",
+    title: "Good Sleep for Good Health",
+    source: "NIH News in Health",
+    category: "health",
+    summary: "Good sleep is about how long, how well and how regularly you sleep, and most adults need at least seven hours.",
+    minutes: 4,
+    url: "https://newsinhealth.nih.gov/2021/04/good-sleep-good-health",
   },
   {
-    label: "Four Thousand Weeks: Time Management for Mortals",
-    detail: "Oliver Burkeman — on giving up the belief that you can get on top of everything",
-    href: "https://openlibrary.org/search?q=Four+Thousand+Weeks+Burkeman",
+    title: "Feeling Stressed?",
+    source: "NIH News in Health",
+    category: "health",
+    summary: "Stress shows up in the body in ways you might not expect, and there are simple things that help you manage it.",
+    minutes: 4,
+    url: "https://newsinhealth.nih.gov/2021/01/feeling-stressed",
   },
   {
-    label: "Why We Sleep",
-    detail: "Matthew Walker — sleep is the first thing burnout takes and the first thing to rebuild",
-    href: "https://openlibrary.org/search?q=Why+We+Sleep+Matthew+Walker",
+    title: "Mental health at work",
+    source: "World Health Organization",
+    category: "health",
+    summary: "Heavy workloads, little control and insecure jobs put mental health at risk, and the WHO sets out what employers can do about it.",
+    minutes: 4,
+    url: "https://www.who.int/news-room/fact-sheets/detail/mental-health-at-work",
+  },
+  {
+    title: "Why Africa needs to invest in mental health",
+    source: "The Conversation Africa",
+    category: "health",
+    summary: "Many African governments spend less than one per cent of their health budgets on mental health, and Kenya has a single psychiatric hospital.",
+    minutes: 4,
+    url: "https://theconversation.com/why-africa-needs-to-invest-in-mental-health-147860",
+  },
+
+  // Science and nerdy stuff
+  {
+    title: "Sleeping Brain Waves Draw a Healthy Bath for Neurons",
+    source: "Quanta Magazine",
+    category: "science",
+    summary: "In deep sleep, slow waves of brain activity, blood and spinal fluid pulse through the brain, which may help wash it clean.",
+    minutes: 6,
+    url: "https://www.quantamagazine.org/sleeping-brain-waves-draw-a-healthy-bath-for-neurons-20191216/",
+  },
+  {
+    title: "Sleep Evolved Before Brains. Hydras Are Living Proof.",
+    source: "Quanta Magazine",
+    category: "science",
+    summary: "Tiny animals with no brain at all still sleep, which suggests sleep began as something the body needed long before brains existed.",
+    minutes: 11,
+    url: "https://www.quantamagazine.org/sleep-evolved-before-brains-hydras-are-living-proof-20210518/",
+  },
+  {
+    title: "How the Brain Moves From Waking Life to Sleep (and Back Again)",
+    source: "Quanta Magazine",
+    category: "science",
+    summary: "Falling asleep is less like a switch and more like a series of in-between states, and sleep problems start when those steps go wrong.",
+    minutes: 14,
+    url: "https://www.quantamagazine.org/how-the-brain-moves-from-waking-life-to-sleep-and-back-again-20251017/",
+  },
+  {
+    title: "Dueling Brain Waves Anchor or Erase Learning During Sleep",
+    source: "Quanta Magazine",
+    category: "science",
+    summary: "While you sleep, one kind of slow brain wave strengthens the day's memories and another kind quietly weakens them.",
+    minutes: 8,
+    url: "https://www.quantamagazine.org/dueling-brain-waves-anchor-or-erase-learning-during-sleep-20191024/",
+  },
+  {
+    title: "A fossil cranium from Kenya tells the story of an extinct elephant species",
+    source: "The Conversation Africa",
+    category: "science",
+    summary: "A skull about 4.5 million years old, found near Lake Turkana, belonged to an elephant far larger than any alive today.",
+    minutes: 5,
+    url: "https://theconversation.com/a-fossil-cranium-from-kenya-tells-the-story-of-an-extinct-elephant-species-171960",
+  },
+
+  // Work and life
+  {
+    title: "ChatGPT is taking ghostwriters’ jobs in Kenya",
+    source: "Rest of World",
+    category: "work",
+    summary: "Kenyan freelancers who write essays for students abroad are earning less as AI writing tools spread.",
+    minutes: 5,
+    url: "https://restofworld.org/2023/chatgpt-taking-kenya-ghostwriters-jobs/",
+  },
+  {
+    title: "How Big Tech’s AI labor supply chain relies on hidden African workers",
+    source: "Rest of World",
+    category: "work",
+    summary: "African content moderators are using European data laws to uncover who they really work for and to demand openness.",
+    minutes: 3,
+    url: "https://restofworld.org/2025/big-tech-ai-labor-supply-chain-african-workers/",
+  },
+  {
+    title: "Catching a break: How gig workers find rest",
+    source: "Rest of World",
+    category: "work",
+    summary: "More than a hundred gig workers in ten cities describe how they find rest between jobs.",
+    minutes: 10,
+    url: "https://restofworld.org/2024/gig-worker-rest-breaks/",
+  },
+  {
+    title: "Why do identical informal businesses set up side by side? It’s a survival tactic",
+    source: "The Conversation Africa",
+    category: "work",
+    summary: "Kenyan car repair businesses cluster together because neighbours become an informal safety net for one another.",
+    minutes: 5,
+    url: "https://theconversation.com/why-do-identical-informal-businesses-set-up-side-by-side-its-a-survival-tactic-kenya-study-225582",
+  },
+  {
+    title: "What hunter-gatherers demonstrate about work and satisfaction",
+    source: "Aeon",
+    category: "work",
+    summary: "Hunter-gatherers did not live in paradise, but the value they place on rest is a sharp contrast with modern working culture.",
+    minutes: 20,
+    url: "https://aeon.co/essays/what-hunter-gatherers-demonstrate-about-work-and-satisfaction",
+  },
+  {
+    title: "Are we working more than ever?",
+    source: "Our World in Data",
+    category: "work",
+    summary: "Working hours have fallen a long way over 150 years, although the gap between countries is still wide.",
+    minutes: 7,
+    url: "https://ourworldindata.org/working-more-than-ever",
+  },
+];
+
+export type Fact = { text: string; source: string; url: string };
+
+/** Each fact is stated on the page it links to. */
+export const FACTS: Fact[] = [
+  {
+    text: "Your brain is about 2% of your body weight, yet it uses around 20% of your energy.",
+    source: "The Conversation",
+    url: "https://theconversation.com/how-much-energy-do-we-expend-thinking-and-using-our-brain-197990",
+  },
+  {
+    text: "An adult brain runs on roughly 260 calories a day, which is about 0.3 kWh.",
+    source: "The Conversation",
+    url: "https://theconversation.com/how-much-energy-do-we-expend-thinking-and-using-our-brain-197990",
+  },
+  {
+    text: "Stressful events can make your body burn fewer calories at rest.",
+    source: "NIH News in Health",
+    url: "https://newsinhealth.nih.gov/2021/01/feeling-stressed",
+  },
+  {
+    text: "Working 55 hours a week or more was linked to 745,000 deaths from stroke and heart disease in 2016.",
+    source: "World Health Organization",
+    url: "https://www.who.int/news/item/17-05-2021-long-working-hours-increasing-deaths-from-heart-disease-and-stroke-who-ilo",
+  },
+  {
+    text: "After 17 hours awake, you are about as impaired as someone with a blood alcohol level of 0.05%.",
+    source: "CDC NIOSH",
+    url: "https://www.cdc.gov/niosh/work-hour-training-for-nurses/longhours/mod3/08.html",
+  },
+  {
+    text: "People spend nearly half their waking hours thinking about something other than what they are doing, and it tends to make them less happy.",
+    source: "Harvard Gazette",
+    url: "https://news.harvard.edu/gazette/story/2010/11/wandering-mind-not-a-happy-mind/",
+  },
+  {
+    text: "A sugar cube of neutron star material would weigh about a billion tons on Earth. That is roughly a mountain.",
+    source: "NASA",
+    url: "https://imagine.gsfc.nasa.gov/science/objects/neutron_stars1.html",
+  },
+  {
+    text: "A day on Venus lasts 243 Earth days. Its year lasts only 225.",
+    source: "NASA",
+    url: "https://science.nasa.gov/venus/venus-facts/",
+  },
+  {
+    text: "An octopus has about as many neurons as a dog, and around two thirds of them are in its arms.",
+    source: "Natural History Museum",
+    url: "https://www.nhm.ac.uk/discover/octopuses-keep-surprising-us-here-are-eight-examples-how.html",
+  },
+  {
+    text: "Tardigrades, also called water bears, survived ten days in the vacuum of space.",
+    source: "European Space Agency",
+    url: "https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/Research/Tiny_animals_survive_exposure_to_space",
+  },
+  {
+    text: "In the UK's four day week trial, 71% of staff reported less burnout, and 56 of the 61 companies chose to carry on.",
+    source: "University of Cambridge",
+    url: "https://www.sociology.cam.ac.uk/news/new-results-worlds-largest-trial-four-day-working-week",
+  },
+  {
+    text: "The WHO does not class burnout as a medical condition. It calls it an occupational phenomenon caused by chronic workplace stress.",
+    source: "World Health Organization",
+    url: "https://www.who.int/news/item/28-05-2019-burn-out-an-occupational-phenomenon-international-classification-of-diseases",
+  },
+  {
+    text: "Depression and anxiety cost the world about 12 billion working days a year.",
+    source: "World Health Organization",
+    url: "https://www.who.int/news-room/fact-sheets/detail/mental-health-at-work",
+  },
+  {
+    text: "Hydras have no brain but still sleep. Dopamine, which keeps most animals awake, sends them to rest.",
+    source: "Quanta Magazine",
+    url: "https://www.quantamagazine.org/sleep-evolved-before-brains-hydras-are-living-proof-20210518/",
+  },
+  {
+    text: "In deep sleep, a wave of spinal fluid washes up through your brain about three times a minute.",
+    source: "Quanta Magazine",
+    url: "https://www.quantamagazine.org/sleeping-brain-waves-draw-a-healthy-bath-for-neurons-20191216/",
+  },
+  {
+    text: "Workers in richer countries tend to work fewer hours than workers in poorer ones.",
+    source: "Our World in Data",
+    url: "https://ourworldindata.org/rich-poor-working-hours",
   },
 ];
 
 export const RESEARCH: Link[] = [
   {
-    label: "WHO — burnout in ICD-11",
+    label: "WHO on burnout in ICD-11",
     detail: "The official definition: an occupational phenomenon, explicitly not a medical condition",
     href: "https://www.who.int/news/item/28-05-2019-burn-out-an-occupational-phenomenon-international-classification-of-diseases",
   },
   {
     label: "Maslach Burnout Inventory",
-    detail: "The instrument most burnout research is built on — three dimensions, not one score",
-    href: "https://www.mindgarden.com/117-maslach-burnout-inventory-mbi",
+    detail: "The instrument most burnout research is built on. This free paper sets out its three scales: exhaustion, depersonalisation and accomplishment",
+    href: "https://pmc.ncbi.nlm.nih.gov/articles/PMC7266903/",
   },
   {
     label: "OpenAlex",
@@ -79,17 +298,22 @@ export const RESEARCH: Link[] = [
     href: "https://openalex.org",
   },
   {
-    label: "PubMed — occupational burnout",
+    label: "Occupational burnout on PubMed",
     detail: "Peer-reviewed literature, free abstracts",
     href: "https://pubmed.ncbi.nlm.nih.gov/?term=occupational+burnout",
   },
 ];
+
+/** One phase of a breathing pacer. The ring eases to `scale` over `seconds`. */
+export type PacePhase = { label: "Inhale" | "Hold" | "Exhale"; seconds: number; scale: number };
 
 export type Practice = {
   name: string;
   minutes: string;
   why: string;
   steps: string[];
+  /** Breathing practices only: drives the animated pacer. */
+  pace?: PacePhase[];
 };
 
 /**
@@ -100,6 +324,13 @@ export const PRACTICES: Practice[] = [
   {
     name: "Physiological sigh",
     minutes: "60 seconds",
+    // A long first inhale, a short second sniff on top, then an exhale about
+    // twice as long as both. The steps give no counts, so these are typical.
+    pace: [
+      { label: "Inhale", seconds: 3, scale: 0.85 },
+      { label: "Inhale", seconds: 1, scale: 1 },
+      { label: "Exhale", seconds: 6, scale: 0.45 },
+    ],
     why: "Two inhales then a long exhale offloads carbon dioxide faster than one breath can, which drops heart rate within a few cycles. The quickest reliable way down from acute stress.",
     steps: [
       "Inhale through the nose until the lungs feel nearly full.",
@@ -111,6 +342,12 @@ export const PRACTICES: Practice[] = [
   {
     name: "Box breathing",
     minutes: "3 minutes",
+    pace: [
+      { label: "Inhale", seconds: 4, scale: 1 },
+      { label: "Hold", seconds: 4, scale: 1 },
+      { label: "Exhale", seconds: 4, scale: 0.45 },
+      { label: "Hold", seconds: 4, scale: 0.45 },
+    ],
     why: "Equal counts give attention something dull and rhythmic to hold, which interrupts rumination. Used by people who need to think clearly under pressure.",
     steps: [
       "Inhale for a count of four.",

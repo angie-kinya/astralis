@@ -10,6 +10,7 @@ import (
 	"astralis/gateway/internal/agent"
 	"astralis/gateway/internal/config"
 	"astralis/gateway/internal/mail"
+	"astralis/gateway/internal/reading"
 	"astralis/gateway/internal/safety"
 	"astralis/gateway/internal/store"
 
@@ -28,6 +29,7 @@ type Server struct {
 	// A separate bucket for sign-in, keyed by IP. Sharing the per-user limiter
 	// would let a sign-in flood from one address eat into chat allowances.
 	authLimiter *rateLimiter
+	reading     *reading.Service
 }
 
 func NewServer(cfg *config.Config, s *store.Store, ag *agent.Agent, f *safety.Filter,
@@ -36,6 +38,7 @@ func NewServer(cfg *config.Config, s *store.Store, ag *agent.Agent, f *safety.Fi
 		cfg: cfg, store: s, agent: ag, filter: f, queue: q, mailer: m,
 		limiter:     newRateLimiter(cfg.RateLimitPerMin),
 		authLimiter: newRateLimiter(cfg.AuthRateLimitPerMin),
+		reading:     reading.New(),
 	}
 }
 
@@ -94,6 +97,10 @@ func (s *Server) Router() *gin.Engine {
 		admin := v1.Group("/admin", s.requireAdmin())
 		admin.GET("/overview", s.handleAdminOverview)
 		admin.GET("/runs", s.handleAdminRuns)
+
+		// Public headlines for the Resources page. No consent needed: nothing
+		// is stored, and the response is the same for everyone.
+		v1.GET("/reading/latest", s.rateLimit(), s.handleLatestReading)
 
 		// Everything that stores conversation content sits behind consent as a rate limit.
 		// Enforcing it here structurally beats trusting six handlers to each remember.

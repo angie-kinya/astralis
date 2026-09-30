@@ -139,6 +139,49 @@
     background-size: 220% 100%;
     @apply animate-sweep;
   }
+
+  /* ------------------------------------------------------------ ripple card
+     The front and the revealed layer share one grid cell, so the card is
+     always as tall as the taller of the two and opening it never shifts the
+     layout. The reveal is a clip-path circle grown from --x/--y, which the
+     component sets from the pointer, or from the centre for the keyboard.
+     Closing collapses the same circle back to the same point. */
+  .ripple-card { @apply relative grid overflow-hidden; }
+  .ripple-card > * { grid-area: 1 / 1; }
+
+  .ripple-layer {
+    @apply z-10 bg-raised;
+    visibility: hidden;
+    clip-path: circle(0 at var(--x, 50%) var(--y, 50%));
+    transition: clip-path 520ms cubic-bezier(.2,.6,.2,1), visibility 0s linear 520ms;
+  }
+  .ripple-layer[data-open="true"] {
+    visibility: visible;
+    clip-path: circle(var(--r, 150%) at var(--x, 50%) var(--y, 50%));
+    transition: clip-path 520ms cubic-bezier(.2,.6,.2,1), visibility 0s;
+  }
+
+  /* On a hover device, a small glow follows the pointer to say "this opens".
+     Only a hint: the full reveal always needs a click, so touch and mouse
+     behave the same. */
+  .ripple-hint {
+    @apply pointer-events-none absolute h-12 w-12 rounded-full opacity-0;
+    left: var(--hx, 50%); top: var(--hy, 50%);
+    margin: -1.5rem 0 0 -1.5rem;
+    background: radial-gradient(circle, rgb(var(--violet) / .22), transparent 70%);
+    transform: scale(.4);
+    transition: transform 320ms cubic-bezier(.2,.6,.2,1), opacity 320ms ease-out;
+  }
+  @media (hover: hover) {
+    .ripple-card:hover .ripple-hint { opacity: 1; transform: scale(1); }
+  }
+
+  /* The breathing pacer. Its transition duration is set inline per phase. */
+  .pacer-ring {
+    @apply h-20 w-20 rounded-full border-2 border-violet/70 bg-violet/10;
+    transition-property: transform;
+    transition-timing-function: ease-in-out;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -146,4 +189,15 @@
     animation-duration: .01ms !important; animation-iteration-count: 1 !important;
     transition-duration: .01ms !important; scroll-behavior: auto !important;
   }
+
+  /* No ripple, just a plain fade. These selectors outrank the universal rule
+     above, so the fade keeps its duration. */
+  .ripple-layer, .ripple-layer[data-open="true"] {
+    clip-path: none;
+    transition: opacity 180ms ease-out, visibility 0s linear 180ms;
+    transition-duration: 180ms, 0s !important;
+  }
+  .ripple-layer { opacity: 0; }
+  .ripple-layer[data-open="true"] { opacity: 1; transition-delay: 0s !important; }
+  .ripple-hint { display: none; }
 }

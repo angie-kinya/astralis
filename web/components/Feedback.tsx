@@ -29,8 +29,8 @@ export default function Feedback({ recommendationId }: { recommendationId: strin
     return (
       <p className="mt-4 font-mono text-[.625rem] leading-relaxed text-ink-3 animate-fade">
         {rated === 1
-          ? "noted — the research behind this is weighted up for next time"
-          : "noted — weighted down. it will surface less often"}
+          ? "noted. the research behind this is weighted up for next time"
+          : "noted. it is weighted down and will surface less often"}
       </p>
     );
   }

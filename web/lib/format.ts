@@ -36,3 +36,15 @@ export function relative(iso: string): string {
   const days = Math.round(hrs / 24);
   return days < 7 ? `${days}d ago` : "a while ago";
 }
+
+/** Relative time in words, for headlines: "just now", "3 hours ago", "2 days ago". */
+export function timeAgo(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins} minutes ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return hrs === 1 ? "1 hour ago" : `${hrs} hours ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return days === 1 ? "yesterday" : `${days} days ago`;
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+}

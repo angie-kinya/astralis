@@ -134,7 +134,7 @@ export default function SettingsPage() {
           <p className="mt-2 max-w-measure text-[.8125rem] leading-relaxed text-ink-2">
             Permanently removes your account, your email address, and every row above. It
             cannot be undone and there is no backup you can be restored from. Research
-            passages stay — they were never yours and contain nothing about you.
+            passages stay. They were never yours and contain nothing about you.
           </p>
           <label className="mt-4 block">
             <span className="label">Type DELETE to confirm</span>

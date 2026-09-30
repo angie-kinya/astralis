@@ -23,7 +23,7 @@ function suggest() {
 
 const LINES = [
   "You are in. Before anything else, I need something to call you.",
-  "Pick anything — it does not have to mean anything, and it does not have to be your name. I would gently suggest it is not: other people here will see it, and you will say more honestly to me if what you say is not attached to who you are at work.",
+  "Pick anything. It does not have to mean anything, and it does not have to be your name. I would gently suggest it is not: other people here will see it, and you will say more honestly to me if what you say is not attached to who you are at work.",
   "You can change it later.",
 ];
 
@@ -113,8 +113,8 @@ export default function Onboarding({ onDone }: { onDone: (handle: string) => voi
           {error && <p role="alert" className="mt-4 text-[.8125rem] text-amber">{error}</p>}
 
           <p className="mt-6 max-w-measure font-mono text-[.6875rem] leading-relaxed text-ink-3">
-            3–24 characters. Letters, numbers, spaces, hyphens, underscores.
-            Your email is never shown to anyone — this name is all anyone sees.
+            3 to 24 characters. Letters, numbers, spaces, hyphens, underscores.
+            Your email is never shown to anyone. This name is all anyone sees.
           </p>
         </div>
       )}

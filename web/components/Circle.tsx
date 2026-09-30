@@ -182,7 +182,7 @@ export default function Circle() {
               <div className="mx-auto max-w-2xl space-y-4 px-5 py-6">
                 {thread.length === 0 && !crisis && (
                   <p className="font-mono text-[.6875rem] leading-relaxed text-ink-3">
-                    nothing here yet. you are both anonymous — say what is actually going on.
+                    nothing here yet. you are both anonymous here, so say what is actually going on.
                   </p>
                 )}
 
@@ -230,7 +230,7 @@ function OptInGate({ onJoin, error }: { onJoin: () => void; error: string | null
       </h1>
       <p className="mt-4 max-w-measure text-[.9375rem] leading-[1.72] text-ink-2">
         Astralis can only ever be a research tool. Sometimes what actually helps is
-        someone who recognises the week you are having — a nurse, a founder, a
+        someone who recognises the week you are having. A nurse, a founder, a
         teacher, someone freelancing and not sleeping.
       </p>
 

@@ -20,23 +20,27 @@ import { api, signOut } from "@/lib/api";
 const SECTIONS = [
   {
     h: "What Astralis is",
-    p: "A personal research project built by a student. It is a reflection and journalling companion for work stress and burnout. It is not therapy, not a diagnosis, not a clinical tool, and not a crisis service. Nothing it says should be treated as medical advice.",
+    p: "A personal research project designed and built by a student engineer. It is a reflection and journalling companion for work stress and burnout. It is not therapy, not a diagnosis, not a clinical tool, and not a crisis service. Nothing it says should be treated as medical advice.",
   },
+  {
+    h: "What Astralis notes about each message",
+    p: "Before replying, a smaller model reads your message and records a few structured observations: what you seem to want (to be heard, advice, or evidence), which work pressures and sources of support you mention, and signs of exhaustion, detachment or lost confidence, each on a simple scale or marked as not evident. These notes shape the reply you get. Later, they may train a small statistical model that helps Astralis notice when things are getting harder. That model would learn from these notes, never from your words, and it would never be used to make decisions about you outside Astralis. The notes are never shown to other people and are deleted with everything else.",
+   },
   {
     h: "What is stored",
     p: "Your email address (to sign you in), the name you chose, every message you send and every reply you receive, and a short factual summary of each conversation so the tool has continuity between sessions. Nothing else.",
   },
   {
     h: "Your email is never visible to anyone",
-    p: "Other people using Astralis see only the name you chose. Your email is not shown in the circle, beside your messages, or anywhere another person can reach, and it is never linked to your name for anyone but you. It is used to send sign-in codes and \u2014 only if you asked \u2014 release notes. It is never shared, sold, or used for marketing. Sign-in emails are delivered through Resend, an email provider, which sees the address only to deliver them.",
+    p: "Other people using Astralis see only the name you chose. Your email is not shown in the circle, beside your messages, or anywhere another person can reach, and it is never linked to your name for anyone but you. It is used to send sign-in codes. If you asked for them, it also sends release notes. It is never shared, sold, or used for marketing. Sign-in emails are delivered through Resend, an email provider, which sees the address only to deliver them.",
   },
   {
     h: "Who else sees it",
-    p: "Your messages are sent to Anthropic's API to generate replies, under their commercial terms. Retrieved research passages are added to that request. Nobody else has access to your conversations, and they are never published.",
+    p: "Your messages are sent to Anthropic's API to generate replies and the observations above, under their commercial terms. Retrieved research passages are added to that request. Nobody else has access to your conversations, and they are never published.",
   },
   {
     h: "How it uses your feedback",
-    p: "When you mark a reply helpful, the research passages behind it are weighted slightly up in future searches — for everyone, not just you. Your words are never used to train or fine-tune any model.",
+    p: "When you mark a reply helpful, the research passages behind it are weighted slightly up in future searches. This affects searches for everyone, not only you. Your words are never used to train or fine-tune any model.",
   },
   {
     h: "If a message suggests crisis",
@@ -44,7 +48,7 @@ const SECTIONS = [
   },
   {
     h: "Talking to other people",
-    p: "You can opt in to a circle of other people using Astralis. If you do, they see only the name you chose \u2014 never your email, which is not linked to your name for anyone. Messages between you are stored so they can be delivered when someone is offline. Peer support is not crisis support, and the same safety filter applies to those messages too. You can leave at any time.",
+    p: "You can opt in to a circle of other people using Astralis. If you do, they see only the name you chose. They never see your email, and it is not linked to your name for anyone. Messages between you are stored so they can be delivered when someone is offline. Peer support is not crisis support, and the same safety filter applies to those messages too. You can leave at any time.",
   },
   {
     h: "Your notes",
@@ -52,11 +56,11 @@ const SECTIONS = [
   },
   {
     h: "Your rights",
-    p: "You can delete your account and every message, summary, and rating permanently, at any time, from the 'Your data' page. Deletion is immediate and irreversible. You can stop using Astralis at any point without giving a reason.",
+    p: "You can delete your account and every message, summary, and rating permanently, at any time, from the You page. Deletion is immediate and irreversible. You can stop using Astralis at any point without giving a reason.",
   },
   {
     h: "Research use",
-    p: "Aggregate, de-identified patterns may inform academic work. Your individual conversations will not be. If this data is ever proposed for formal research, that requires a separate ethics review and a fresh, specific request for your consent — this agreement does not cover it.",
+    p: "Aggregate, de-identified patterns may inform academic work. Your individual conversations will not be. If this data is ever proposed for formal research, that requires a separate ethics review and a fresh, specific request for your consent. This agreement does not cover it.",
   },
 ];
 
@@ -87,8 +91,8 @@ export default function Consent({ version, onAccepted }: {
           Before we begin
         </h1>
         <p className="mt-3 max-w-measure text-[0.9375rem] leading-relaxed text-ink-2">
-          Please read this in full. It is short, and everything in it is enforced
-          by the system rather than promised by it.
+          Please read this in full. It is short. The system enforces everything it
+          says.
         </p>
       </header>
 
@@ -123,7 +127,7 @@ export default function Consent({ version, onAccepted }: {
 
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         <button className="btn-primary" onClick={() => void accept()} disabled={!read || busy}>
-          {busy ? "Recording…" : "I have read this — continue"}
+          {busy ? "Recording…" : "I have read this. Continue"}
         </button>
         <button className="btn-quiet" onClick={() => void signOut()}>Not now</button>
         {!read && (
