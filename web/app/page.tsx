@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import HeroMark from "@/components/HeroMark";
 import ThemeToggle from "@/components/ThemeToggle";
 import Wordmark from "@/components/Wordmark";
 
@@ -44,26 +45,37 @@ export default async function Landing() {
     <div className="relative min-h-dvh">
       <header className="mx-auto flex max-w-4xl items-center justify-between px-6 py-6">
         <Wordmark />
-        <ThemeToggle />
+        <div className="flex items-center gap-1">
+          <Link href="/signin"
+                className="rounded-lg px-2.5 py-1.5 font-mono text-[.75rem] text-ink-2
+                           transition-colors hover:bg-raised hover:text-ink">
+            Sign in
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className="mx-auto max-w-4xl px-6 pb-24">
-        <section className="pt-12 sm:pt-20">
-          <p className="label">Closed beta · Independent research project</p>
+        {/* The arrival: the eye, large and awake, then four sentences and a door. */}
+        <section className="flex min-h-[calc(100dvh-5.5rem)] flex-col items-center justify-center
+                            pb-12 pt-6 text-center sm:pb-16">
+          <HeroMark className="h-36 w-36 sm:h-52 sm:w-52" />
 
-          <h1 className="mt-5 max-w-[16ch] font-sans text-[2.5rem] font-semibold
-                         leading-[1.06] tracking-[-.03em] sm:text-[3.25rem]">
+          <p className="label mt-10 sm:mt-14">Closed beta · Independent research project</p>
+
+          <h1 className="mx-auto mt-5 max-w-[16ch] font-sans text-[2.5rem] font-semibold
+                         leading-[1.06] tracking-[-.03em] sm:text-[3.5rem]">
             A quieter place to think about work.
           </h1>
 
-          <p className="mt-6 max-w-measure text-[1rem] leading-[1.72] text-ink-2">
+          <p className="mx-auto mt-6 max-w-measure text-[1rem] leading-[1.72] text-ink-2">
             Astralis is a reflection companion for burnout and work stress. When evidence
             would help, it draws on published research. It keeps track of your thread
             between conversations and connects you with other people using it, under
             whatever name you choose.
           </p>
 
-          <div className="mt-9 flex flex-wrap items-center gap-3">
+          <div className="mt-9 flex flex-col items-center gap-4">
             <Link href="/signin" className="btn-primary">
               Begin with your email
               <span aria-hidden className="font-mono">›</span>
@@ -71,14 +83,18 @@ export default async function Landing() {
             <span className="font-mono text-[.6875rem] leading-relaxed text-ink-3">
               No account elsewhere needed. Others here see
               <br className="hidden sm:block" />
-              only the name you choose, never your email.
+              {" "}only the name you choose, never your email.
             </span>
           </div>
+
+          <a href="#how" className="label mt-14 rounded transition-colors hover:text-ink-2">
+            how it works <span aria-hidden>↓</span>
+          </a>
         </section>
 
-        <div className="hair my-14 sm:my-20" />
+        <div className="hair mb-14 sm:mb-20" />
 
-        <section>
+        <section id="how" className="scroll-mt-8">
           <p className="label">How it works</p>
           <div className="mt-7 grid gap-x-10 gap-y-9 sm:grid-cols-2">
             {MECHANISM.map((m) => (

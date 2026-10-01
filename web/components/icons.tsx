@@ -1,3 +1,5 @@
+import { MarkShapes } from "@/components/Wordmark";
+
 /** Stroke icons at a single weight, sized by the caller. No icon library. */
 const base = {
   viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
@@ -5,10 +7,7 @@ const base = {
 };
 
 export const IconAstralis = (p: { className?: string }) => (
-  <svg {...base} className={p.className} aria-hidden>
-    <ellipse cx="12" cy="12" rx="9" ry="5" transform="rotate(-24 12 12)" opacity=".5" />
-    <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
-  </svg>
+  <svg viewBox="0 0 24 24" className={p.className} aria-hidden><MarkShapes /></svg>
 );
 
 export const IconCircle = (p: { className?: string }) => (
@@ -62,5 +61,12 @@ export const IconMenu = (p: { className?: string }) => (
 export const IconBack = (p: { className?: string }) => (
   <svg {...base} className={p.className} aria-hidden>
     <path d="M14 6.5 8.5 12l5.5 5.5" />
+  </svg>
+);
+
+export const IconSignOut = (p: { className?: string }) => (
+  <svg {...base} className={p.className} aria-hidden>
+    <path d="M14 4.5H7.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H14" />
+    <path d="M11 12h9M16.5 8.5 20 12l-3.5 3.5" />
   </svg>
 );

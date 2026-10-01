@@ -183,6 +183,7 @@ function Privacy() {
   ];
   return (
     <section aria-label="How your email is handled"
+             data-butterfly-clear
              className="mt-10 rounded-xl border border-line bg-surface/60 p-5">
       <p className="label">Your email stays yours</p>
       <ul className="mt-4 space-y-3">

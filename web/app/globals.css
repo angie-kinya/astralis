@@ -176,6 +176,27 @@
     .ripple-card:hover .ripple-hint { opacity: 1; transform: scale(1); }
   }
 
+  /* ------------------------------------------------------------ hero mark
+     The landing's eye: a glow that breathes, and a blink every few seconds
+     (the whole eye, lid and all, closes to a line and reopens). */
+  .hero-glow {
+    background: radial-gradient(circle, rgb(var(--violet) / .26), rgb(var(--cyan) / .05) 48%, transparent 66%);
+    animation: hero-glow 7s ease-in-out infinite;
+  }
+  .hero-eye {
+    transform-box: view-box; transform-origin: 12px 12px;
+    filter: drop-shadow(0 0 .6px rgb(var(--violet-2) / .9));
+    animation: hero-blink 9s ease-in-out 2.4s infinite;
+  }
+  @keyframes hero-glow {
+    0%, 100% { opacity: .7; transform: scale(.95); }
+    50%      { opacity: 1;  transform: scale(1.04); }
+  }
+  @keyframes hero-blink {
+    0%, 94%, 100% { transform: scaleY(1); }
+    96%           { transform: scaleY(.1); }
+  }
+
   /* The breathing pacer. Its transition duration is set inline per phase. */
   .pacer-ring {
     @apply h-20 w-20 rounded-full border-2 border-violet/70 bg-violet/10;

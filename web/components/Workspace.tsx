@@ -118,7 +118,7 @@ export default function Workspace() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl space-y-7 px-5 py-7 sm:px-8">
+          <div data-butterfly-clear="chat" className="mx-auto max-w-3xl space-y-7 px-5 py-7 sm:px-8">
             {turns.length === 0 && !pending && <Opener />}
 
             <div className="space-y-7" aria-live="polite" aria-relevant="additions">
@@ -136,7 +136,7 @@ export default function Workspace() {
         </div>
 
         <div className="border-t border-line px-5 py-3.5 sm:px-8">
-          <div className="mx-auto max-w-3xl">
+          <div data-butterfly-clear="chat" className="mx-auto max-w-3xl">
             <Composer onSend={(t) => void send(t)} disabled={pending || !activeId} />
           </div>
         </div>

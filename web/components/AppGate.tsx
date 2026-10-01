@@ -7,7 +7,8 @@ import Onboarding from "@/components/Onboarding";
 import Rail from "@/components/Rail";
 import ThemeToggle from "@/components/ThemeToggle";
 import Wordmark from "@/components/Wordmark";
-import { ApiError, api, type Me, userMessage } from "@/lib/api";
+import { IconSignOut } from "@/components/icons";
+import { ApiError, api, type Me, signOut, userMessage } from "@/lib/api";
 
 type Ctx = { me: Me; refresh: () => Promise<void>; setMe: (m: Me) => void };
 const MeContext = createContext<Ctx | null>(null);
@@ -79,11 +80,18 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pb-[3.75rem]">
           <header className="flex shrink-0 items-center gap-4 border-b border-line px-4 py-2.5">
             <Wordmark withText={false} />
-            <span className="font-mono text-[.6875rem] text-ink-3">
-              signed in as <span className="text-ink-2">{me.handle}</span>
+            <span className="min-w-0 truncate font-mono text-[.6875rem] text-ink-3">
+              <span className="max-sm:hidden">signed in as </span>
+              <span className="text-ink-2">{me.handle}</span>
             </span>
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex shrink-0 items-center gap-1">
               <ThemeToggle />
+              <button onClick={() => void signOut()}
+                      className="flex h-8 items-center gap-1.5 rounded-lg px-2 font-mono text-[.6875rem]
+                                 text-ink-3 transition-colors hover:bg-raised hover:text-ink">
+                <IconSignOut className="h-4 w-4" />
+                sign out
+              </button>
             </div>
           </header>
           <div className="min-h-0 flex-1">{children}</div>

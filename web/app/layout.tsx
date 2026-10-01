@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Sora } from "next/font/google";
 
+import Butterflies from "@/components/Butterflies";
+
 import "./globals.css";
 
 // Self-hosted at build time: no runtime request to Google, nobody outside this
@@ -36,7 +38,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en-GB" data-theme="dark" suppressHydrationWarning
           className={`${mono.variable} ${sans.variable}`}>
       <head><script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} /></head>
-      <body className="min-h-dvh font-sans">{children}</body>
+      <body className="min-h-dvh font-sans">
+        {/* Once, here: behind the landing, sign-in and every module alike. */}
+        <Butterflies />
+        {children}
+      </body>
     </html>
   );
 }
