@@ -33,25 +33,44 @@
     --halo-1: rgba(139, 92, 246, .13);
     --halo-2: rgba(34, 211, 238, .06);
     --grid:   rgba(139, 92, 246, .045);
+
+    /* The background butterflies (components/Butterflies.tsx). In the dark a
+       glow carries them; the light theme swaps in deeper ink and no glow. */
+    --fly-wing:   var(--violet-2);
+    --fly-hind-a: var(--violet);
+    --fly-hind-b: var(--cyan);
+    --fly-glow:   1;
+    --fly-alpha:  1;
   }
 
+  /* Light is daylight through lavender glass, not a white page: a tinted
+     ground with a violet glow from the top-left and a faint wash across it,
+     near-white surfaces lifted off it by purple-tinted borders and soft
+     shadows. Every text token clears WCAG AA on bg, surface and raised; the
+     ratios are in the comment beside each one. */
   [data-theme="light"] {
-    --bg:      250 249 252;
-    --surface: 255 255 255;
-    --raised:  243 241 249;
-    --line:    229 225 239;
-    --line-2:  205 198 226;
-    --ink:      22  19  31;
-    --ink-2:    87  82 107;
-    --ink-3:   138 132 158;
-    --violet:  109  63 224;
-    --violet-2:124  58 237;
-    --cyan:     14 140 168;
-    --amber:   178 106  31;
+    --bg:      240 236 250;   /* #F0ECFA — keep in sync with themeColor in app/layout.tsx */
+    --surface: 252 251 255;
+    --raised:  233 228 247;
+    --line:    222 214 241;
+    --line-2:  197 186 230;
+    --ink:      23  18  38;   /* 15.7:1 on bg */
+    --ink-2:    74  66 100;   /*  8.0:1 */
+    --ink-3:    98  91 126;   /*  5.5:1 on bg, 5.1:1 on raised */
+    --violet:  104  58 220;   /*  white on it 6.5:1 */
+    --violet-2:103  44 212;   /*  6.3:1 — the violet used for text */
+    --cyan:      8 112 136;   /*  4.9:1 — presence text and dots */
+    --amber:   146  82  12;   /*  5.3:1, 4.9:1 inside the crisis card */
 
-    --halo-1: rgba(109, 63, 224, .07);
-    --halo-2: rgba(14, 140, 168, .04);
-    --grid:   rgba(109, 63, 224, .04);
+    --halo-1: rgba(124, 77, 232, .17);
+    --halo-2: rgba(186, 160, 250, .22);
+    --grid:   rgba(104, 58, 220, .075);
+
+    --fly-wing:   79  46 190;
+    --fly-hind-a: 64  52 196;
+    --fly-hind-b:  8 112 136;
+    --fly-glow:   0;
+    --fly-alpha:  .8;
   }
 
   html { -webkit-text-size-adjust: 100%; }
@@ -68,6 +87,19 @@
       linear-gradient(90deg, var(--grid) 1px, transparent 1px);
     background-size: auto, auto, 46px 46px, 46px 46px;
     background-attachment: fixed;
+  }
+
+  /* Light only: the same two light sources and grid, plus a faint
+     violet-to-lavender wash so no part of the page is a flat sheet. Dark keeps
+     the rule above untouched. */
+  [data-theme="light"] body {
+    background-image:
+      radial-gradient(56rem 38rem at 10% -12%, var(--halo-1), transparent 64%),
+      radial-gradient(44rem 30rem at 94% 4%,  var(--halo-2), transparent 60%),
+      linear-gradient(162deg, rgba(124, 77, 232, .06) 0%, transparent 42%, rgba(186, 160, 250, .12) 100%),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: auto, auto, auto, 46px 46px, 46px 46px;
   }
 
   ::selection { @apply bg-violet/30; }
@@ -104,6 +136,33 @@
 
   /* ---------------------------------------------------------------- surfaces */
   .card { @apply rounded-xl border border-line bg-surface; }
+
+  /* Light only: in the dark, surfaces separate from the ground by luminance;
+     on a pale ground they need a shadow to read as layers. Purple-tinted, so
+     it looks like depth in the same light rather than grey dirt. Applies to
+     cards, the composer and inputs (rounded surfaces), and the side panels. */
+  [data-theme="light"] .card,
+  [data-theme="light"] .rounded-xl.bg-surface,
+  [data-theme="light"] .rounded-lg.bg-surface {
+    box-shadow: 0 1px 2px rgba(60, 34, 140, .06), 0 10px 28px -16px rgba(76, 46, 170, .22);
+  }
+  [data-theme="light"] .border-r.bg-surface,
+  [data-theme="light"] .md\:border-r.bg-surface { box-shadow: 6px 0 24px -18px rgba(76, 46, 170, .3); }
+  @media (max-width: 767px) {
+    /* The module bar sits at the bottom on phones. */
+    [data-theme="light"] .max-md\:border-t.bg-surface { box-shadow: 0 -6px 24px -18px rgba(76, 46, 170, .3); }
+  }
+  /* Care panels (the crisis card, error notes, the delete zone) carry the
+     `care` class. A translucent amber over the lavender ground mixes to
+     mauve, so in light they get an opaque warm cream instead; every text
+     token stays above 5.6:1 on it. Dark keeps its translucent amber. */
+  [data-theme="light"] .care {
+    background-color: rgb(252 245 234);
+    border-color: rgb(var(--amber) / .32);
+    box-shadow: 0 1px 2px rgba(120, 70, 10, .05), 0 10px 28px -16px rgba(146, 82, 12, .2);
+  }
+  /* Quiet buttons get a near-white fill so they read as controls on the tint. */
+  [data-theme="light"] .btn-quiet:not(:hover) { @apply bg-surface/70; }
 
   /* The structural voice: mono, uppercase, tracked. Used for every label,
      status, and piece of metadata in the product. */

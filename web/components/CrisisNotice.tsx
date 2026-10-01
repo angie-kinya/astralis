@@ -14,7 +14,7 @@ import { paragraphs } from "@/lib/format";
 export default function CrisisNotice({ text }: { text: string }) {
   return (
     <section role="note" aria-label="Support resources"
-             className="animate-rise rounded-xl border border-amber/30 bg-amber/[.06] p-5 sm:p-6">
+             className="care animate-rise rounded-xl border border-amber/30 bg-amber/[.06] p-5 sm:p-6">
       <p className="font-mono text-[.625rem] uppercase tracking-[.14em] text-amber">
         fixed response · written by a person, not generated
       </p>

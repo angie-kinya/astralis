@@ -130,7 +130,7 @@ export default function SettingsPage() {
         </dl>
 
         {/* -------------------------------------------------------- erasure */}
-        <section className="mt-6 rounded-xl border border-amber/30 bg-amber/[.05] p-5">
+        <section className="care mt-6 rounded-xl border border-amber/30 bg-amber/[.05] p-5">
           <h2 className="font-sans text-[1rem] font-medium">Delete everything</h2>
           <p className="mt-2 max-w-measure text-[.8125rem] leading-relaxed text-ink-2">
             Permanently removes your account, your email address, and every row above. It

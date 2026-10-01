@@ -65,10 +65,13 @@ function spawn(w: number, h: number, fresh: boolean): Fly {
   };
 }
 
-function readColours(): { violet: RGB; violet2: RGB; cyan: RGB } {
+/** Theme tokens from globals.css (--fly-*), re-read whenever the theme flips. */
+function readColours() {
   const cs = getComputedStyle(document.documentElement);
   const get = (n: string) => cs.getPropertyValue(n).trim().split(/\s+/).map(Number) as RGB;
-  return { violet: get("--violet"), violet2: get("--violet-2"), cyan: get("--cyan") };
+  const num = (n: string, d: number) => { const v = parseFloat(cs.getPropertyValue(n)); return Number.isFinite(v) ? v : d; };
+  return { wing: get("--fly-wing"), hindA: get("--fly-hind-a"), hindB: get("--fly-hind-b"),
+           glow: num("--fly-glow", 1), alpha: num("--fly-alpha", 1) };
 }
 
 const mixRGB = (a: RGB, b: RGB, k: number) => a.map((v, i) => Math.round(v + (b[i]! - v) * k)) as RGB;
@@ -177,25 +180,25 @@ export default function Butterflies() {
         f.x = x; f.y = y;
 
         const size = f.size * grow;
-        const a = f.alpha * boost * zoneFade(x, y, size);
+        const a = f.alpha * colours.alpha * boost * zoneFade(x, y, size);
         if (a < .01) return;
 
         // Flap in bursts with glides between, so each one has its own rhythm.
         f.phase += step * f.flapHz * Math.PI * 2 * (.55 + .45 * Math.sin(clock * .35 + f.glide));
         const k = .28 + .72 * Math.abs(Math.cos(f.phase));
 
-        const fore = rgba(colours.violet2, a);
-        const hind = rgba(mixRGB(colours.violet, colours.cyan, f.mix), a * .9);
+        const fore = rgba(colours.wing, a);
+        const hind = rgba(mixRGB(colours.hindA, colours.hindB, f.mix), a * .9);
         ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx!.translate(x, y);
         ctx!.rotate(f.angle);
         ctx!.scale(size, size);
-        ctx!.shadowColor = rgba(colours.violet2, Math.min(1, a * 2.2));
-        ctx!.shadowBlur = size * .7 * dpr;
+        ctx!.shadowColor = rgba(colours.wing, Math.min(1, a * 2.2));
+        ctx!.shadowBlur = size * .7 * dpr * colours.glow;
         wings(ctx!, -1, k, fore, hind);
         wings(ctx!, 1, k, fore, hind);
         ctx!.shadowBlur = 0;
-        ctx!.fillStyle = rgba(colours.violet2, Math.min(1, a * 1.6));
+        ctx!.fillStyle = rgba(colours.wing, Math.min(1, a * 1.6));
         ctx!.beginPath();
         ctx!.ellipse(-.02, 0, .38, .045, 0, 0, Math.PI * 2);
         ctx!.fill();

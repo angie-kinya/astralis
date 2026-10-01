@@ -128,7 +128,7 @@ export default function Workspace() {
             {pending && <Thinking />}
             {error && (
               <p role="alert"
-                 className="rounded-lg border border-amber/30 bg-amber/[.06] px-4 py-3
+                 className="care rounded-lg border border-amber/30 bg-amber/[.06] px-4 py-3
                             font-mono text-[.75rem] text-amber">{error}</p>
             )}
             <div ref={bottom} className="h-1" />
