@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import Butterfly from "@/components/Butterflies";
 import Composer from "@/components/Composer";
 import SessionRail from "@/components/SessionRail";
 import Thinking from "@/components/Thinking";
@@ -149,6 +150,8 @@ function Opener() {
   const line = OPENERS[Math.floor(Math.random() * OPENERS.length)]!;
   return (
     <div className="max-w-reading border-l border-violet/45 pl-4 sm:pl-5">
+      {/* Perched at the head of the thread: the conversation starts calm. */}
+      <Butterfly pose="rest" className="mb-2.5 h-4 w-4 text-violet-2/75" />
       <p className="mb-2 font-mono text-[.625rem] uppercase tracking-[.14em] text-violet-2">
         astralis <span className="text-ink-3/50">›</span>
       </p>

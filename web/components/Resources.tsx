@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import Butterfly from "@/components/Butterflies";
 import Pacer from "@/components/Pacer";
 import Reading from "@/components/Reading";
 import RippleCard from "@/components/RippleCard";
@@ -29,10 +30,16 @@ export default function Resources() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-5 py-7 sm:px-8">
-        <p className="label">Practices &amp; resources</p>
-        <h1 className="mt-3 font-sans text-[1.75rem] font-semibold leading-tight tracking-[-.025em]">
-          Things that help, and why they do
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="label">Practices &amp; resources</p>
+            <h1 className="mt-3 font-sans text-[1.75rem] font-semibold leading-tight tracking-[-.025em]">
+              Things that help, and why they do
+            </h1>
+          </div>
+          {/* Settled in the corner: these are here whenever, not now. */}
+          <Butterfly pose="rest" className="mt-1 h-5 w-5 shrink-0 text-violet-2/55" />
+        </div>
 
         <div role="tablist" aria-label="Resource categories"
              className="mt-6 flex flex-wrap gap-1.5 border-b border-line pb-3">

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import Butterfly from "@/components/Butterflies";
 import { IconPlus } from "@/components/icons";
 import { api, type Note, userMessage } from "@/lib/api";
 import { relative } from "@/lib/format";
@@ -113,9 +114,13 @@ export default function Notes() {
       <main className="flex min-w-0 flex-1 flex-col">
         {!active ? (
           <div className="grid h-full place-items-center px-6 text-center">
-            <p className="max-w-measure font-sans text-[.875rem] leading-relaxed text-ink-3">
-              A private notepad. Nothing here is read by Astralis, embedded, or sent anywhere.
-            </p>
+            <div>
+              {/* A rest, not a prompt: an empty notepad is fine as it is. */}
+              <Butterfly pose="rest" className="mx-auto mb-4 h-5 w-5 text-violet-2/60" />
+              <p className="mx-auto max-w-measure font-sans text-[.875rem] leading-relaxed text-ink-3">
+                A private notepad. Nothing here is read by Astralis, embedded, or sent anywhere.
+              </p>
+            </div>
           </div>
         ) : (
           <>

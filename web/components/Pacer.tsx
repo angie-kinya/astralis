@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import Butterfly from "@/components/Butterflies";
 import type { PacePhase } from "@/lib/resources";
 import { useReducedMotion } from "@/lib/motion";
 
@@ -41,12 +42,22 @@ export default function Pacer({ pace, active }: { pace: PacePhase[]; active: boo
           {running ? step.left : "·"}
         </p>
       ) : (
-        <div className="grid h-24 w-24 place-items-center" aria-hidden>
+        <div className="relative grid h-24 w-24 place-items-center" aria-hidden>
           <div className="pacer-ring"
                style={{
                  transform: `scale(${running ? phase.scale : REST})`,
                  transitionDuration: running ? `${phase.seconds}s` : "300ms",
                }} />
+          {/* The same breath, read as a wing: open on the inhale, folded on
+              the exhale, on exactly the pacer's clock. The butterfly is what
+              the exercise is *for* — a quiet body settling, not a progress bar. */}
+          <span className="absolute inset-0 grid place-items-center">
+            <Butterfly pose="still" className="h-7 w-7 text-violet-2"
+                       style={{
+                         transform: `scaleX(${running ? phase.scale : 0.72})`,
+                         transition: `transform ${running ? phase.seconds : 400}ms ease-in-out`,
+                       }} />
+          </span>
         </div>
       )}
       <p className="font-sans text-[.9375rem] font-medium text-ink" role="status">

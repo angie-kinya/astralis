@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useMe } from "@/components/AppGate";
+import Butterfly from "@/components/Butterflies";
 import Composer from "@/components/Composer";
 import CrisisNotice from "@/components/CrisisNotice";
-import { useMe } from "@/components/AppGate";
-import { IconBack, IconCircle } from "@/components/icons";
+import { IconBack } from "@/components/icons";
 import { api, type Peer, type PeerMessage, userMessage } from "@/lib/api";
 import { relative, timeOfDay } from "@/lib/format";
 
@@ -155,7 +156,9 @@ export default function Circle() {
         {!active ? (
           <div className="grid h-full place-items-center px-6 text-center">
             <div>
-              <IconCircle className="mx-auto h-6 w-6 text-ink-3" />
+              {/* Perched, not flying: nobody is waiting on you here. The
+                  empty state is a rest, not a prompt to hurry. */}
+              <Butterfly pose="rest" className="mx-auto h-6 w-6 text-violet-2/70" />
               <p className="mt-3 font-mono text-[.75rem] text-ink-3">
                 pick someone to write to
               </p>
@@ -181,9 +184,13 @@ export default function Circle() {
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto max-w-2xl space-y-4 px-5 py-6">
                 {thread.length === 0 && !crisis && (
-                  <p className="font-mono text-[.6875rem] leading-relaxed text-ink-3">
-                    nothing here yet. you are both anonymous here, so say what is actually going on.
-                  </p>
+                  <div className="max-w-2xl">
+                    {/* Nothing said yet, and nothing owed yet either. */}
+                    <Butterfly pose="rest" className="mb-3 h-4 w-4 text-violet-2/60" />
+                    <p className="font-mono text-[.6875rem] leading-relaxed text-ink-3">
+                      nothing here yet. you are both anonymous here, so say what is actually going on.
+                    </p>
+                  </div>
                 )}
 
                 {thread.map((m) => (

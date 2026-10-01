@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
+import { GLYPH_BODY, GLYPH_HALF, MIRROR } from "@/components/Butterflies";
 import { useReducedMotion } from "@/lib/motion";
 
 /**
@@ -17,7 +18,8 @@ import { useReducedMotion } from "@/lib/motion";
  * is invisible.
  *
  * Text wins: anything marked data-butterfly-clear (the chat's reading column
- * and composer; the sign-in, onboarding and consent content) is a keep-out zone. Zones are read at each
+ * and composer; the sign-in, onboarding and consent content; the landing's
+ * main and footer) is a keep-out zone. Zones are read at each
  * placement, and every few seconds a visible glyph that a zone has moved onto
  * (a route change, a resize) is faded out early.
  *
@@ -227,19 +229,18 @@ export default function GlyphField({ density = 1, startAtRest = false }: {
   return (
     <svg ref={svgRef} aria-hidden className="glyph-field pointer-events-none fixed inset-0 -z-10 h-full w-full">
       <defs>
-        {/* The glyph, drawn once: forewings sweeping up and out, hindwings
-            with a small trailing lobe, a body line and two short antennae.
-            Non-scaling strokes keep it at 1px from 10px to 22px. */}
+        {/* The glyph, drawn once from the shared geometry exported by
+            components/Butterflies.tsx — the same shape that perches in the
+            app's empty states. Non-scaling strokes keep it at 1px from 10px
+            to 22px. */}
         <symbol id="astralis-glyph" viewBox="0 0 24 24">
           <g id="astralis-glyph-half">
-            <path vectorEffect="non-scaling-stroke"
-                  d="M12.4 9.6C13.9 7 17 5 19.9 5.1C21.3 5.2 21.5 6.6 20.8 8.2C20 10.2 17.4 11.8 12.4 12.2Z" />
-            <path vectorEffect="non-scaling-stroke"
-                  d="M12.4 12.9C15.4 12.8 18 13.6 18.4 15.4C18.7 16.8 17.6 17.9 16.4 18.1C16.6 19.1 16.3 19.9 15.7 20C14.4 19.4 13.1 17.4 12.4 14.4Z" />
+            {GLYPH_HALF.map((d) => (
+              <path key={d} vectorEffect="non-scaling-stroke" d={d} />
+            ))}
           </g>
-          <use href="#astralis-glyph-half" transform="matrix(-1 0 0 1 24 0)" />
-          <path vectorEffect="non-scaling-stroke"
-                d="M12 8.4V17.2M11.7 8.3C11.2 6.6 10.4 5.5 9.3 5.1M12.3 8.3C12.8 6.6 13.6 5.5 14.7 5.1" />
+          <use href="#astralis-glyph-half" transform={MIRROR} />
+          <path vectorEffect="non-scaling-stroke" d={GLYPH_BODY} />
         </symbol>
       </defs>
     </svg>

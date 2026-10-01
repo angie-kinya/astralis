@@ -1,3 +1,5 @@
+import Butterfly from "@/components/Butterflies";
+
 /**
  * Not three bouncing dots. A skeleton at the same measure and leading as the
  * prose that will replace it, so the layout does not jump — and a mono status
@@ -7,7 +9,11 @@
 export default function Thinking() {
   return (
     <div className="animate-fade border-l border-violet/45 pl-4 sm:pl-5" role="status" aria-live="polite">
-      <p className="mb-3 font-mono text-[.625rem] uppercase tracking-[.14em] text-violet-2">
+      {/* Someone is here, and in no hurry: the wings flex slowly while the
+          reply is composed — a heartbeat instead of a spinner. */}
+      <p className="mb-3 flex items-center gap-2 font-mono text-[.625rem]
+                    uppercase tracking-[.14em] text-violet-2">
+        <Butterfly pose="hover" className="h-3.5 w-3.5 shrink-0" />
         astralis <span className="text-ink-3/50">›</span>
       </p>
       <span className="sr-only">Astralis is composing a reply</span>

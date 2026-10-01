@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import GlyphField from "@/components/GlyphField";
 import HeroMark from "@/components/HeroMark";
 import ThemeToggle from "@/components/ThemeToggle";
 import WingContour from "@/components/WingContour";
@@ -44,8 +45,11 @@ export default async function Landing() {
 
   return (
     <div className="relative min-h-dvh overflow-x-clip">
-      {/* One wing at the right edge behind the hero; a different one at the
-          left edge behind "How it works". No glyph field on this page. */}
+      {/* The blend: two wings — one at the right edge behind the hero, a
+          different one at the left edge behind "How it works" — over the same
+          drifting glyph field the product uses, so the landing and the app
+          are visibly one place. */}
+      <GlyphField density={0.55} startAtRest />
       <WingContour side="right"
                    className="-right-[30%] top-[2%] w-[92vw] sm:-right-[12%] sm:-top-[4%] sm:w-[min(58vw,720px)]" />
       <header className="mx-auto flex max-w-4xl items-center justify-between px-6 py-6">
@@ -60,7 +64,7 @@ export default async function Landing() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 pb-24">
+      <main data-butterfly-clear className="mx-auto max-w-4xl px-6 pb-24">
         {/* The arrival: the eye, large and awake, then four sentences and a door. */}
         <section className="flex min-h-[calc(100dvh-5.5rem)] flex-col items-center justify-center
                             pb-12 pt-6 text-center sm:pb-16">
@@ -148,7 +152,7 @@ export default async function Landing() {
         </section>
       </main>
 
-      <footer className="mx-auto max-w-4xl px-6 pb-10">
+      <footer data-butterfly-clear className="mx-auto max-w-4xl px-6 pb-10">
         <div className="hair mb-6" />
         <p className="font-mono text-[.6875rem] leading-relaxed text-ink-3">
           Experimental project. Not a substitute for professional care. In immediate

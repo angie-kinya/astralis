@@ -33,16 +33,21 @@
     --halo-1: rgba(139, 92, 246, .13);
     --halo-2: rgba(34, 211, 238, .06);
     --grid:   rgba(139, 92, 246, .045);
+    /* One dot in the middle of every grid cell, so the ground reads as graph
+       paper — editorial, hand-kept — rather than an empty cage. Cell centres
+       only: the lines already own the intersections. */
+    --grid-dot: rgba(167, 139, 250, .3);
 
     /* Background butterflies: the glyph field (components/GlyphField.tsx)
        and the landing's wing contours (components/WingContour.tsx). Muted
-       grey-violet, a few glyphs a little more violet. */
+       grey-violet, a few glyphs a little more violet. Foreground butterflies
+       (components/Butterflies.tsx) take currentColor instead. */
     --glyph:         176 168 210;
     --glyph-accent:  167 139 250;
     --glyph-gain:    1;
     --contour:       190 178 240;
-    --contour-draw:  .16;
-    --contour-rest:  .075;
+    --contour-draw:  .2;
+    --contour-rest:  .11;
   }
 
   /* Light is daylight through lavender glass, not a white page: a tinted
@@ -67,33 +72,38 @@
     --halo-1: rgba(124, 77, 232, .17);
     --halo-2: rgba(186, 160, 250, .22);
     --grid:   rgba(104, 58, 220, .075);
+    /* Same graph-paper dots, darker to suit the tint. */
+    --grid-dot: rgba(104, 58, 220, .32);
 
     /* Darker strokes at lower opacity, so they stay quiet on the tint. */
     --glyph:         72  62 118;
     --glyph-accent:  92  48 200;
     --glyph-gain:    .9;
     --contour:       80  56 170;
-    --contour-draw:  .14;
-    --contour-rest:  .07;
+    --contour-draw:  .18;
+    --contour-rest:  .1;
   }
 
   html { -webkit-text-size-adjust: 100%; }
 
   body {
     @apply bg-bg text-ink antialiased;
-    /* Two soft light sources plus a barely-there grid. At these opacities the
-       grid reads as depth and precision, not as decoration — which is the
-       difference between "futuristic" and "sci-fi wallpaper". */
+    /* Two soft light sources plus a barely-there grid, dotted at every cell
+       centre. At these opacities the grid reads as depth and precision, not
+       as decoration — the difference between "futuristic" and "sci-fi
+       wallpaper" — and the dots give it the graph-paper grain the product's
+       editorial voice sits on. */
     background-image:
       radial-gradient(52rem 34rem at 14% -10%, var(--halo-1), transparent 62%),
       radial-gradient(40rem 28rem at 92% 6%,  var(--halo-2), transparent 58%),
+      radial-gradient(circle, var(--grid-dot) 1.4px, transparent 1.7px),
       linear-gradient(var(--grid) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: auto, auto, 46px 46px, 46px 46px;
+    background-size: auto, auto, 46px 46px, 46px 46px, 46px 46px;
     background-attachment: fixed;
   }
 
-  /* Light only: the same two light sources and grid, plus a faint
+  /* Light only: the same two light sources, grid and dots, plus a faint
      violet-to-lavender wash so no part of the page is a flat sheet. Dark keeps
      the rule above untouched. */
   [data-theme="light"] body {
@@ -101,9 +111,10 @@
       radial-gradient(56rem 38rem at 10% -12%, var(--halo-1), transparent 64%),
       radial-gradient(44rem 30rem at 94% 4%,  var(--halo-2), transparent 60%),
       linear-gradient(162deg, rgba(124, 77, 232, .06) 0%, transparent 42%, rgba(186, 160, 250, .12) 100%),
+      radial-gradient(circle, var(--grid-dot) 1.4px, transparent 1.7px),
       linear-gradient(var(--grid) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: auto, auto, auto, 46px 46px, 46px 46px;
+    background-size: auto, auto, auto, 46px 46px, 46px 46px, 46px 46px;
   }
 
   ::selection { @apply bg-violet/30; }
@@ -271,6 +282,34 @@
     transform-box: fill-box; transform-origin: center; opacity: 0;
   }
   .glyph-accent { stroke: rgb(var(--glyph-accent)); }
+
+  /* Foreground butterflies (components/Butterflies.tsx): the same outline as
+     the field's glyphs, drawn larger and perched where a moment needs calm.
+     They fold by scaling the figure toward the body; the stroke refuses to
+     scale with it, so the line stays hairline at every size. The pose is the
+     meaning — hover: someone is working, unhurried; rest: nothing is
+     happening yet and that is fine; still: the caller drives it (the pacer's
+     breath). */
+  .bfly {
+    display: block;
+    color: rgb(var(--violet-2));
+    transform-box: view-box;
+    transform-origin: center;
+  }
+  .bfly path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .bfly--hover { animation: bfly-flex 3.6s ease-in-out infinite; }
+  .bfly--rest  { animation: bfly-flex 8s   ease-in-out infinite; }
+  @keyframes bfly-flex {
+    0%, 100% { transform: scaleX(1); }
+    50%      { transform: scaleX(.78); }
+  }
 
   .wing-contour path {
     fill: none; stroke: rgb(var(--contour)); stroke-width: 1.1;

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { useMe } from "@/components/AppGate";
+import Butterfly from "@/components/Butterflies";
 import { ApiError, api, signOut, userMessage } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 
@@ -157,7 +158,10 @@ export default function SettingsPage() {
                   className="font-mono text-[.6875rem] text-ink-3 hover:text-ink-2">
             sign out
           </button>
-          <span className="font-mono text-[.625rem] text-ink-3">astralis · closed beta</span>
+          <span className="flex items-center gap-2 font-mono text-[.625rem] text-ink-3">
+            <Butterfly pose="rest" className="h-3.5 w-3.5 text-violet-2/55" />
+            astralis · closed beta
+          </span>
         </div>
       </div>
     </div>
