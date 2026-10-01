@@ -85,7 +85,7 @@ export default function Consent({ termsUpdatedAt, onAccepted }: {
   }
 
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col px-5 py-8 sm:px-6">
+    <div data-butterfly-clear="content" className="mx-auto flex h-full max-w-2xl flex-col px-5 py-8 sm:px-6">
       <header className="shrink-0">
         <p className="eyebrow">Participation terms · updated {longDate(termsUpdatedAt)}</p>
         <h1 className="mt-3 font-serif text-[2rem] leading-tight tracking-[-0.02em]">

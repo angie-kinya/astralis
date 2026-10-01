@@ -1,3 +1,4 @@
+import GlyphField from "@/components/GlyphField";
 import SignIn from "@/components/SignIn";
 import ThemeToggle from "@/components/ThemeToggle";
 import Wordmark from "@/components/Wordmark";
@@ -10,6 +11,7 @@ export const metadata = { title: "Sign in · Astralis" };
 export default function SignInPage() {
   return (
     <div className="flex min-h-dvh flex-col">
+      <GlyphField density={0.8} startAtRest />
       <header className="flex shrink-0 items-center justify-between border-b border-line px-5 py-3">
         <a href="/" className="rounded"><Wordmark /></a>
         <ThemeToggle />

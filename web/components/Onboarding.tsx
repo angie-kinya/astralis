@@ -63,7 +63,7 @@ export default function Onboarding({ onDone }: { onDone: (handle: string) => voi
   const ready = shown >= LINES.length;
 
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col justify-center px-6 py-10">
+    <div data-butterfly-clear="content" className="mx-auto flex h-full max-w-2xl flex-col justify-center px-6 py-10">
       <p className="label mb-6">Astralis</p>
 
       <div className="space-y-4 border-l border-violet/40 pl-5 sm:pl-6">

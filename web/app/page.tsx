@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import HeroMark from "@/components/HeroMark";
 import ThemeToggle from "@/components/ThemeToggle";
+import WingContour from "@/components/WingContour";
 import Wordmark from "@/components/Wordmark";
 
 /**
@@ -42,7 +43,11 @@ export default async function Landing() {
   if (cookies().get("astralis_session")) redirect("/chat");
 
   return (
-    <div className="relative min-h-dvh">
+    <div className="relative min-h-dvh overflow-x-clip">
+      {/* One wing at the right edge behind the hero; a different one at the
+          left edge behind "How it works". No glyph field on this page. */}
+      <WingContour side="right"
+                   className="-right-[30%] top-[2%] w-[92vw] sm:-right-[12%] sm:-top-[4%] sm:w-[min(58vw,720px)]" />
       <header className="mx-auto flex max-w-4xl items-center justify-between px-6 py-6">
         <Wordmark />
         <div className="flex items-center gap-1">
@@ -94,7 +99,9 @@ export default async function Landing() {
 
         <div className="hair mb-14 sm:mb-20" />
 
-        <section id="how" className="scroll-mt-8">
+        <section id="how" className="relative scroll-mt-8">
+          <WingContour side="left"
+                       className="-left-[40%] -top-24 w-[85vw] sm:-left-[22%] sm:w-[min(48vw,560px)] lg:-left-[30%]" />
           <p className="label">How it works</p>
           <div className="mt-7 grid gap-x-10 gap-y-9 sm:grid-cols-2">
             {MECHANISM.map((m) => (

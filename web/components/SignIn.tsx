@@ -71,7 +71,7 @@ export default function SignIn() {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-10">
+    <div data-butterfly-clear="content" className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-10">
       {step === "email" ? (
         <form onSubmit={sendCode} className="animate-rise">
           <p className="label">Sign in</p>

@@ -34,13 +34,15 @@
     --halo-2: rgba(34, 211, 238, .06);
     --grid:   rgba(139, 92, 246, .045);
 
-    /* The background butterflies (components/Butterflies.tsx). In the dark a
-       glow carries them; the light theme swaps in deeper ink and no glow. */
-    --fly-wing:   var(--violet-2);
-    --fly-hind-a: var(--violet);
-    --fly-hind-b: var(--cyan);
-    --fly-glow:   1;
-    --fly-alpha:  1;
+    /* Background butterflies: the glyph field (components/GlyphField.tsx)
+       and the landing's wing contours (components/WingContour.tsx). Muted
+       grey-violet, a few glyphs a little more violet. */
+    --glyph:         176 168 210;
+    --glyph-accent:  167 139 250;
+    --glyph-gain:    1;
+    --contour:       190 178 240;
+    --contour-draw:  .16;
+    --contour-rest:  .075;
   }
 
   /* Light is daylight through lavender glass, not a white page: a tinted
@@ -66,11 +68,13 @@
     --halo-2: rgba(186, 160, 250, .22);
     --grid:   rgba(104, 58, 220, .075);
 
-    --fly-wing:   79  46 190;
-    --fly-hind-a: 64  52 196;
-    --fly-hind-b:  8 112 136;
-    --fly-glow:   0;
-    --fly-alpha:  .8;
+    /* Darker strokes at lower opacity, so they stay quiet on the tint. */
+    --glyph:         72  62 118;
+    --glyph-accent:  92  48 200;
+    --glyph-gain:    .9;
+    --contour:       80  56 170;
+    --contour-draw:  .14;
+    --contour-rest:  .07;
   }
 
   html { -webkit-text-size-adjust: 100%; }
@@ -255,6 +259,34 @@
     0%, 94%, 100% { transform: scaleY(1); }
     96%           { transform: scaleY(.1); }
   }
+
+  /* ------------------------------------------------------------ butterflies
+     Glyphs: 1px outlines; their opacity and scale are driven inline by
+     GlyphField. Contours: pathLength=1, so a dash of 1 offset by 1 hides the
+     line and offset 0 shows it; drawn once, then settled and still. */
+  .glyph-field { opacity: var(--glyph-gain); }
+  .glyph {
+    fill: none; stroke: rgb(var(--glyph)); stroke-width: 1;
+    stroke-linecap: round; stroke-linejoin: round;
+    transform-box: fill-box; transform-origin: center; opacity: 0;
+  }
+  .glyph-accent { stroke: rgb(var(--glyph-accent)); }
+
+  .wing-contour path {
+    fill: none; stroke: rgb(var(--contour)); stroke-width: 1.1;
+    stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 1; stroke-dashoffset: 1; opacity: var(--contour-draw);
+  }
+  .wing-contour[data-phase="drawing"] path {
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 5s cubic-bezier(.45, .05, .25, 1);
+  }
+  .wing-contour[data-phase="resting"] path {
+    stroke-dashoffset: 0; opacity: var(--contour-rest);
+    transition: opacity 2.6s ease-in-out;
+  }
+  /* Drawn smaller on phones, so the line is thicker in its own units. */
+  @media (max-width: 639px) { .wing-contour path { stroke-width: 2; } }
 
   /* The breathing pacer. Its transition duration is set inline per phase. */
   .pacer-ring {
