@@ -42,15 +42,15 @@ func Decide(an Analysis, analysed bool, message string) Plan {
 
 var guidance = map[string]string{
 	"vent": "The person mainly wants to be heard. Reflect back what you heard in your own words. " +
-		"Do not offer advice unless they ask for it. End with at most one gentle, open question.",
+		"Do not offer advice unless they ask for it. A question is optional; often it is better to end on acknowledgement.",
 	"seek_advice": "The person is asking what to do. Reflect back briefly, then offer at most two small, " +
 		"concrete steps they could try this week, each tied to what they told you.",
 	"ask_evidence": "The person wants to know what the research says. Lead with the evidence and its limits. " +
 		"Say plainly when the excerpts do not cover their question.",
 	"report_progress": "The person is telling you how something they tried went. Acknowledge it specifically. " +
-		"Ask what made the difference, or what got in the way, before suggesting anything new.",
-	"reflect": "The person is thinking out loud. Help them notice patterns by reflecting and asking. " +
-		"Do not rush to conclusions or advice.",
-	"greeting":  "Reply briefly and warmly, and invite them to share how work has been.",
+		"Reflect what seems to have made the difference. Ask about it only if you genuinely need to know, never as a reflex.",
+	"reflect": "The person is thinking out loud. Help them notice patterns by reflecting what you notice; " +
+		"use a question only if it opens something up. Do not rush to conclusions or advice.",
+	"greeting":  "Reply briefly and warmly. A light invitation to say how work has been is fine; no interrogation.",
 	"off_topic": "Reply briefly and kindly, and explain that Astralis is here for work stress and burnout.",
 }

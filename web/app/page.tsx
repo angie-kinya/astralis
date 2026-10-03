@@ -70,7 +70,7 @@ export default async function Landing() {
                             pb-12 pt-6 text-center sm:pb-16">
           <HeroMark className="h-36 w-36 sm:h-52 sm:w-52" />
 
-          <p className="label mt-10 sm:mt-14">Closed beta · Independent research project</p>
+          <p className="label mt-10 sm:mt-14">Independent research project</p>
 
           <h1 className="mx-auto mt-5 max-w-[16ch] font-sans text-[2.5rem] font-semibold
                          leading-[1.06] tracking-[-.03em] sm:text-[3.5rem]">

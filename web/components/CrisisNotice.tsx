@@ -7,16 +7,16 @@ import { paragraphs } from "@/lib/format";
  * icon, no shake. Someone who has just written the hardest sentence of their
  * week should feel handed a card by a person who cares, not caught by a filter.
  *
- * It is labelled honestly too. Saying "written by a person, not generated" is
- * more respectful than pretending an agent chose these words, and it is the
- * literal truth about what happened in that request.
+ * The label says plainly that this is a standard response, which is true: the
+ * model was never called. It deliberately avoids words like "flagged" or
+ * "crisis detected" — the person reading it should feel met, not processed.
  */
 export default function CrisisNotice({ text }: { text: string }) {
   return (
     <section role="note" aria-label="Support resources"
              className="care animate-rise rounded-xl border border-amber/30 bg-amber/[.06] p-5 sm:p-6">
       <p className="font-mono text-[.625rem] uppercase tracking-[.14em] text-amber">
-        fixed response · written by a person, not generated
+        a standard response for moments like this
       </p>
 
       <div className="reply mt-4">

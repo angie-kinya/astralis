@@ -160,7 +160,7 @@ export default function SettingsPage() {
           </button>
           <span className="flex items-center gap-2 font-mono text-[.625rem] text-ink-3">
             <Butterfly pose="rest" className="h-3.5 w-3.5 text-violet-2/55" />
-            astralis · closed beta
+            astralis · independent research project
           </span>
         </div>
       </div>

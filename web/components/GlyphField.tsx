@@ -7,11 +7,12 @@ import { GLYPH_BODY, GLYPH_HALF, MIRROR } from "@/components/Butterflies";
 import { useReducedMotion } from "@/lib/motion";
 
 /**
- * A sparse field of tiny butterfly outlines, fixed behind everything. Texture,
- * not animation: nothing flies. Each glyph independently fades in with a soft
- * pop (scale .92 -> 1), holds, fades out, stays gone a while, and comes back
- * somewhere else. At most two are changing at any moment, so the field never
- * blinks in unison.
+ * A sparse field of tiny butterfly outlines, fixed behind everything. Each
+ * glyph independently fades in with a soft pop (scale .92 -> 1), drifts very
+ * slowly left to right for its whole visible life (5–9 px/s, linear, so it
+ * reads as a current rather than flight), fades out further along, stays gone
+ * a while, and comes back somewhere else. At most two are fading at any
+ * moment, so the field never blinks in unison.
  *
  * Cost: timers and CSS transitions only, no animation loop and no canvas.
  * Timers pause while the tab is hidden. A glyph is only ever moved while it
@@ -27,8 +28,13 @@ import { useReducedMotion } from "@/lib/motion";
  */
 
 type Glyph = {
-  wrap: SVGGElement; use: SVGUseElement;
+  // wrap: placement · drift: the slow journey (own transition) · rot: tilt · use: fade + pop
+  wrap: SVGGElement; drift: SVGGElement; rot: SVGGElement; use: SVGUseElement;
   rest: number; size: number; cx: number; cy: number;
+  // The journey planned at placement: durations, total distance, and when the
+  // drift started, so the glyph's live position can be computed at any time.
+  inMs: number; holdMs: number; outMs: number; dx: number; dy: number;
+  startAt: number; life: number;
   placed: boolean; visible: boolean; leaving: boolean;
   gen: number;                 // bumped on every fade-out, so stale timers do nothing
 };
@@ -100,22 +106,59 @@ export default function GlyphField({ density = 1, startAtRest = false }: {
     }
     const inZone = (g: { cx: number; cy: number; size: number }, zs: Zone[]) =>
       zs.some((z) => g.cx > z.l - g.size && g.cx < z.r + g.size && g.cy > z.t - g.size && g.cy < z.b + g.size);
+    // Where a drifting glyph is now, not where it started.
+    const live = (g: Glyph) => {
+      const t = g.life ? Math.min(1, Math.max(0, (performance.now() - g.startAt) / g.life)) : 0;
+      return { cx: g.cx + g.dx * t, cy: g.cy + g.dy * t, size: g.size };
+    };
 
-    function place(g: Glyph) {
+    // Durations first, because the distance travelled depends on them.
+    function plan(g: Glyph, startVisible: boolean) {
+      g.inMs = startVisible ? 0 : rand(2500, 4000);
+      g.holdMs = startVisible ? rand(4000, 22000) : rand(14000, 28000);
+      g.outMs = rand(3000, 5000);
+      const total = g.inMs + g.holdMs + g.outMs;
+      const dist = still ? 0 : (rand(5, 9) * total) / 1000;   // px
+      g.dx = dist;
+      g.dy = dist * rand(-.12, .12);                          // a slight rise or fall
+    }
+
+    function place(g: Glyph, startVisible = false) {
       const zs = zones();
+      plan(g, startVisible);
       for (let i = 0; i < 40; i++) {
-        const size = rand(10, 22), x = rand(12, W - 12 - size), y = rand(12, H - 12 - size);
+        const size = rand(10, 22);
+        // Start further left than not, so most of the journey is on screen.
+        const x = rand(12, Math.max(13, W * .8 - size)), y = rand(12, H - 12 - size);
         const c = { cx: x + size / 2, cy: y + size / 2, size };
-        if (inZone(c, zs)) continue;
+        // The whole path must stay clear of text: start, middle and end.
+        const along = (t: number) => ({ cx: c.cx + g.dx * t, cy: c.cy + g.dy * t, size });
+        if (inZone(c, zs) || inZone(along(.5), zs) || inZone(along(1), zs)) continue;
         if (glyphs.some((o) => o !== g && o.placed && Math.hypot(o.cx - c.cx, o.cy - c.cy) < minGap)) continue;
-        Object.assign(g, c, { placed: true });
-        g.wrap.setAttribute("transform",
-          `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${rand(-25, 25).toFixed(1)} ${size / 2} ${size / 2})`);
+        Object.assign(g, c, { placed: true, life: 0 });
+        g.wrap.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+        g.rot.setAttribute("transform", `rotate(${rand(-25, 25).toFixed(1)} ${size / 2} ${size / 2})`);
         g.use.setAttribute("width", String(size));
         g.use.setAttribute("height", String(size));
+        g.drift.style.transition = "none";
+        g.drift.style.transform = "translate(0px, 0px)";
         return true;
       }
       return false;
+    }
+
+    // One linear transition for the whole visible life. Linear on purpose:
+    // easing in and out would read as take-off and landing; the fades already
+    // soften both ends.
+    function startDrift(g: Glyph, ms: number) {
+      if (still || !g.dx) return;
+      g.drift.style.transition = "none";
+      g.drift.style.transform = "translate(0px, 0px)";
+      g.drift.getBoundingClientRect();
+      g.startAt = performance.now();
+      g.life = ms;
+      g.drift.style.transition = `transform ${ms}ms linear`;
+      g.drift.style.transform = `translate(${g.dx.toFixed(1)}px, ${g.dy.toFixed(1)}px)`;
     }
 
     const style = (g: Glyph, transition: string, opacity: number, transform: string) => {
@@ -130,7 +173,8 @@ export default function GlyphField({ density = 1, startAtRest = false }: {
     }
 
     function fadeIn(g: Glyph) {
-      const d = rand(2500, 4000);
+      const d = g.inMs;
+      startDrift(g, g.inMs + g.holdMs + g.outMs);
       style(g, "none", 0, "scale(.92)");
       g.use.getBoundingClientRect();          // commit the start state
       g.visible = true;
@@ -140,10 +184,8 @@ export default function GlyphField({ density = 1, startAtRest = false }: {
     }
     function hold(g: Glyph) {
       if (g.leaving) return;
-      const gen = g.gen, h = rand(8000, 20000), a = rand(0, Math.PI * 2), d = rand(1, 2);
-      style(g, `transform ${h}ms linear`, g.rest,
-        `translate(${(Math.cos(a) * d).toFixed(2)}px, ${(Math.sin(a) * d).toFixed(2)}px)`);
-      later(() => { if (g.gen === gen) whenFree(() => (g.gen === gen ? fadeOut(g, rand(3000, 5000)) : busy--)); }, h);
+      const gen = g.gen, h = g.holdMs;
+      later(() => { if (g.gen === gen) whenFree(() => (g.gen === gen ? fadeOut(g, g.outMs) : busy--)); }, h);
     }
     function fadeOut(g: Glyph, d: number, counted = true) {
       g.leaving = true;
@@ -168,7 +210,7 @@ export default function GlyphField({ density = 1, startAtRest = false }: {
     function check() {
       const zs = zones();
       for (const g of glyphs) {
-        if (!g.visible || g.leaving || !inZone(g, zs)) continue;
+        if (!g.visible || g.leaving || !inZone(live(g), zs)) continue;
         if (still) { g.use.style.opacity = "0"; g.visible = g.placed = false; if (place(g)) { g.visible = true; g.use.style.opacity = String(g.rest); } }
         else fadeOut(g, 1200, false);
       }
@@ -187,21 +229,28 @@ export default function GlyphField({ density = 1, startAtRest = false }: {
 
       glyphs = Array.from({ length: n }, () => {
         const wrap = document.createElementNS(NS, "g") as SVGGElement;
+        const drift = document.createElementNS(NS, "g") as SVGGElement;
+        const rot = document.createElementNS(NS, "g") as SVGGElement;
         const use = document.createElementNS(NS, "use") as SVGUseElement;
         wrap.dataset.glyph = "";
         use.setAttribute("href", "#astralis-glyph");
         use.setAttribute("class", Math.random() < .25 ? "glyph glyph-accent" : "glyph");
-        wrap.append(use); svg!.append(wrap);
-        return { wrap, use, rest: rand(.06, .2), size: 0, cx: -999, cy: -999, placed: false, visible: false, leaving: false, gen: 0 };
+        rot.append(use); drift.append(rot); wrap.append(drift); svg!.append(wrap);
+        return {
+          wrap, drift, rot, use, rest: rand(.06, .2), size: 0, cx: -999, cy: -999,
+          inMs: 0, holdMs: 0, outMs: 0, dx: 0, dy: 0, startAt: 0, life: 0,
+          placed: false, visible: false, leaving: false, gen: 0,
+        };
       });
 
       for (const g of glyphs) {
         if (still) {
           if (place(g)) { g.visible = true; style(g, "none", g.rest, "none"); }
-        } else if (startAtRest && Math.random() < .66 && place(g)) {
+        } else if (startAtRest && Math.random() < .66 && place(g, true)) {
           g.visible = true;
           style(g, "none", g.rest, "none");
-          later(() => { if (g.gen === 0) whenFree(() => (g.gen === 0 ? fadeOut(g, rand(3000, 5000)) : busy--)); }, rand(2000, 22000));
+          startDrift(g, g.holdMs + g.outMs);
+          later(() => { if (g.gen === 0) whenFree(() => (g.gen === 0 ? fadeOut(g, g.outMs) : busy--)); }, g.holdMs);
         } else {
           // Staggered first arrivals, so the field gathers slowly.
           later(() => { if (place(g)) whenFree(() => fadeIn(g)); else gone(g); }, rand(1500, startAtRest ? 20000 : 28000));
