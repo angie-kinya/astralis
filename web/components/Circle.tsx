@@ -14,6 +14,7 @@ import {
   reportPeer, userMessage,
 } from "@/lib/api";
 import { useEvent, useEventsConnected } from "@/lib/events";
+import { scrollPaneToEnd } from "@/lib/scroll";
 import { dateTime, dayKey, dayLabel, relative, timeOfDay } from "@/lib/format";
 
 // a deleted message keeps its row as a tombstone: body is null and deleted is set
@@ -53,7 +54,7 @@ export default function Circle() {
   const [menu, setMenu] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const [report, setReport] = useState<{ messageId?: string } | null>(null);
-  const bottom = useRef<HTMLDivElement>(null);
+  const pane = useRef<HTMLDivElement>(null);
   const live = useEventsConnected();
 
   // events arrive in closures registered once, so they read the open thread through a ref
@@ -118,7 +119,7 @@ export default function Circle() {
     setThread((t) => t.map((m) => (m.mine && !m.readAt ? { ...m, readAt: now } : m)));
   });
 
-  useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [thread.length]);
+  useEffect(() => { scrollPaneToEnd(pane.current, true); }, [thread.length]);
 
   async function openThread(p: Peer) {
     setActive(p); activeRef.current = p;
@@ -303,7 +304,7 @@ export default function Circle() {
               )}
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div ref={pane} className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto max-w-2xl space-y-4 px-5 py-6">
                 {thread.length === 0 && !crisis && (
                   <div className="max-w-2xl">
@@ -333,7 +334,6 @@ export default function Circle() {
                 {error && (
                   <p role="alert" className="font-mono text-[.75rem] text-amber">{error}</p>
                 )}
-                <div ref={bottom} className="h-1" />
               </div>
             </div>
 

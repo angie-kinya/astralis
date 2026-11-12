@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { scrollPaneToEnd } from "@/lib/scroll";
 import { AstralisMark, Gutter } from "@/components/Speaker";
 import Composer from "@/components/Composer";
 import EndCard from "@/components/EndCard";
@@ -39,7 +40,7 @@ export default function Workspace() {
   const [railOpen, setRailOpen] = useState(false);
   const [endCard, setEndCard] = useState<{ id: string; earlier: boolean } | null>(null);
 
-  const bottom = useRef<HTMLDivElement>(null);
+  const pane = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
   const key = () => `t${seq.current++}`;
   // refs, so the sse handler and timers read the live values without re-subscribing
@@ -102,7 +103,7 @@ export default function Workspace() {
   }, []);
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: turns.length > 1 ? "smooth" : "auto" });
+    scrollPaneToEnd(pane.current, turns.length > 1);
   }, [turns, pending, endCard]);
 
   // Ask the API to summarise as the tab goes away. `pagehide` fires where
@@ -171,7 +172,7 @@ export default function Workspace() {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={pane} className="min-h-0 flex-1 overflow-y-auto">
           <div data-butterfly-clear="chat" className="mx-auto max-w-3xl space-y-7 px-5 py-7 sm:px-8">
             {endCard?.earlier && (
               <EndCard sessionId={endCard.id} earlier onDone={() => setEndCard(null)} />
@@ -192,7 +193,6 @@ export default function Workspace() {
                  className="care rounded-lg border border-amber/30 bg-amber/[.06] px-4 py-3
                             font-mono text-[.75rem] text-amber">{error}</p>
             )}
-            <div ref={bottom} className="h-1" />
           </div>
         </div>
 
