@@ -9,8 +9,11 @@ cd deploy
 export TAG="${TAG:-latest}"
 
 docker compose pull --quiet
-docker compose up -d postgres
-./migrate.sh                  # schema before code: new code may need new columns
+# --wait blocks until the healthcheck passes. without it, a recreated postgres
+# (new image pulled) is "started" but not yet accepting connections, and the
+# first migration fails with a socket error
+docker compose up -d --wait postgres
+./migrate.sh                 # schema before code: new code may need new columns
 docker compose up -d --remove-orphans
 # the Caddyfile is a bind mount, so `up` never notices it changed. a reload is
 # graceful (no dropped connections) and a no-op when nothing changed
