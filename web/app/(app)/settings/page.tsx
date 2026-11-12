@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useMe } from "@/components/AppGate";
 import Butterfly from "@/components/Butterflies";
 import Remembers from "@/components/Remembers";
-import { ApiError, api, signOut, userMessage } from "@/lib/api";
+import { ApiError, api, leaderboard, setLeaderboardOptIn, signOut, userMessage } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 
 /**
@@ -26,6 +26,18 @@ export default function SettingsPage() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // the opt-in lives on the leaderboard response, not on /me; null until it has loaded
+  const [onBoard, setOnBoard] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!me.games) return;
+    leaderboard().then((b) => setOnBoard(b.me.optedIn)).catch(() => { /* the toggle just stays hidden */ });
+  }, [me.games]);
+
+  async function toggleBoard(value: boolean) {
+    try { await setLeaderboardOptIn(value); setOnBoard(value); }
+    catch (e) { setError(userMessage(e, "Could not update that.")); }
+  }
 
   async function rename() {
     const h = handle.trim();
@@ -112,6 +124,16 @@ export default function SettingsPage() {
           onClick={() => void toggle("/me/peer-opt-in", "peerOptIn", !me.peerOptIn)}
           labels={["Join", "Leave"]}
         />
+        {me.games && onBoard !== null && (
+          <Toggle
+            title="Constellations board"
+            on={onBoard}
+            onText="Your name and this week's points appear on the weekly board for others in the circle."
+            offText="Off. Your points stay visible to you alone, and nobody sees your name on the board."
+            onClick={() => void toggleBoard(!onBoard)}
+            labels={["Show me", "Hide me"]}
+          />
+        )}
 
         {/* ----------------------------------------------------------- data */}
         <h2 className="label mt-10">What Astralis holds</h2>
@@ -124,6 +146,7 @@ export default function SettingsPage() {
             ["Ratings", "Your helpful / not-helpful marks, which reweight retrieval"],
             ["Circle", "Messages between you and other people here, and a copy of any message you report"],
             ["Notes", "Your notepad. Never read by any model"],
+            ...(me.games ? [["Games", "Constellations games you played and their scores, for the weekly board"]] : []),
           ].map(([k, v]) => (
             <div key={k} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-5">
               <dt className="label w-28 shrink-0 pt-0.5">{k}</dt>

@@ -16,6 +16,11 @@ A quiet place to think about work stress and burnout.
   when relevant, listed in Settings under *What Astralis remembers*, each deletable
 - **Circle:** optional, anonymous peer messaging in real time; delete, block and report;
   only your chosen name is ever shown
+- **Constellations:** a three-minute, turn-based game (dots and boxes on a 4×4 star field),
+  behind `GAMES_ENABLED`. Play someone from the Circle, play Astralis (a deterministic Go
+  opponent, no model), or play solo on one device. The leaderboard counts only games
+  between people, is opt-in, resets every Monday and gives points for finishing as well as
+  winning; no streaks, no loss counts, and the agent never mentions it
 - **Practices, reading and helplines**, and a private **notepad** no model ever reads
 - **Sign-in by email code** only; your email is never visible to other users
 
@@ -59,6 +64,13 @@ in-memory hub (`internal/realtime`): Circle messages, deletions and read receipt
 agent's truthful progress ("reading 2 studies"). Replies are not token-streamed on purpose:
 the verifier has to see the whole reply before anyone does. One API container makes the
 in-memory hub enough; a second one would back it with Postgres `LISTEN/NOTIFY`.
+
+**Constellations.** The rules are a pure, value-typed engine (`internal/game`) with table tests
+and a fuzzer (`go test -fuzz=FuzzRandomGames ./internal/game`) proving every legal game ends
+with all nine boxes owned. The server is authoritative: the client sends only an edge number,
+and each move is saved under an optimistic lock on `games.version`, so two tabs or two fast
+clicks can never both land (the loser gets `409` and refetches). Invites check opt-in and
+blocks in the same statement as messages; one pending invite per pair is a unique index.
 
 ## Stack
 

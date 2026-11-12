@@ -98,6 +98,8 @@ export type Me = {
   handle: string;
   peerOptIn: boolean;
   notifyReleases: boolean;
+  /** constellations is behind GAMES_ENABLED; false hides every entry point */
+  games: boolean;
 };
 
 export type Peer = {
@@ -176,6 +178,59 @@ export type Fact = {
 
 export type ReportReason = "harassment" | "spam" | "unsafe" | "other";
 
+// ---------------------------------------------------------------- constellations
+
+export type Invite = {
+  id: string;
+  peerId: string;
+  peerHandle: string;
+  /** true when I sent it */
+  mine: boolean;
+  status: "pending" | "accepted" | "declined" | "expired";
+  /** set once accepted */
+  gameId: string | null;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type GameMode = "peer" | "astralis" | "solo";
+/** 0 is nobody, 1 is player_a, 2 is player_b (or astralis, or the second colour in solo) */
+export type Player = 0 | 1 | 2;
+
+/** shaped for whoever asked: me, myTurn, score and result differ between the two players */
+export type Game = {
+  id: string;
+  mode: GameMode;
+  /** null for astralis and solo */
+  peerId: string | null;
+  peerHandle: string | null;
+  me: 1 | 2;
+  /** 24 edges: 0..11 horizontal (r*3+c), 12..23 vertical (12+r*4+c) */
+  drawn: boolean[];
+  /** 9 boxes, r*3+c */
+  owner: Player[];
+  toMove: 1 | 2;
+  /** always true in solo while active */
+  myTurn: boolean;
+  score: { me: number; them: number };
+  status: "active" | "finished" | "abandoned";
+  /** null unless finished, and always null in solo */
+  result: "won" | "lost" | null;
+  lastEdge: number | null;
+  /** edges astralis drew in reply to this request, in order, so they can be played back one by one */
+  botEdges: number[];
+  /** not in the contract yet: who drew each edge. used when present, otherwise drawers are tracked per tab */
+  drawnBy?: Player[];
+  version: number;
+  updatedAt: string;
+};
+
+export type LeaderRow = { handle: string; points: number; games: number; me: boolean };
+export type Leaderboard = {
+  top: LeaderRow[];
+  me: { points: number; games: number; optedIn: boolean };
+};
+
 // ---------------------------------------------------------------- calls
 // thin wrappers, so a route change touches one line and callers stay typed
 
@@ -191,3 +246,19 @@ export const blockPeer   = (peerId: string) => api<void>(`/peers/${peerId}/block
 export const unblockPeer = (peerId: string) => api<void>(`/peers/${peerId}/block`, { method: "DELETE" });
 export const reportPeer  = (peerId: string, reason: ReportReason, messageId?: string) =>
   api<void>(`/peers/${peerId}/report`, { method: "POST", body: JSON.stringify({ reason, messageId }) });
+
+export const sendInvite    = (peerId: string) =>
+  api<{ invite: Invite }>(`/peers/${peerId}/invites`, { method: "POST" });
+export const listInvites   = () => api<{ invites: Invite[] }>("/games/invites");
+export const acceptInvite  = (id: string) => api<{ game: Game }>(`/games/invites/${id}/accept`, { method: "POST" });
+/** either side; from the sender it is a cancel */
+export const declineInvite = (id: string) => api<void>(`/games/invites/${id}/decline`, { method: "POST" });
+export const createGame    = (mode: "astralis" | "solo") =>
+  api<{ game: Game }>("/games", { method: "POST", body: JSON.stringify({ mode }) });
+export const activeGames   = () => api<{ games: Game[] }>("/games/active");
+export const getGame       = (id: string) => api<{ game: Game }>(`/games/${id}`);
+export const playMove      = (id: string, edge: number, version: number) =>
+  api<{ game: Game }>(`/games/${id}/moves`, { method: "POST", body: JSON.stringify({ edge, version }) });
+export const leaderboard   = () => api<Leaderboard>("/games/leaderboard");
+export const setLeaderboardOptIn = (optIn: boolean) =>
+  api<void>("/me/leaderboard-opt-in", { method: "POST", body: JSON.stringify({ optIn }) });

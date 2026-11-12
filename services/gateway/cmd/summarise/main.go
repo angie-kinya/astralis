@@ -87,6 +87,20 @@ func main() {
 		slog.Info("purged expired auth rows", "count", n)
 	}
 
+	// constellations housekeeping. no hub in this process, so nobody is told;
+	// open tabs see the change on their next fetch. an abandoned game earns no
+	// points, which is why it is a status of its own and not "finished"
+	if n, err := db.ExpireInvites(ctx); err != nil {
+		slog.Error("expire game invites", "err", err)
+	} else if n > 0 {
+		slog.Info("expired game invites", "count", n)
+	}
+	if n, err := db.AbandonStaleGames(ctx, 24*time.Hour); err != nil {
+		slog.Error("abandon idle games", "err", err)
+	} else if n > 0 {
+		slog.Info("abandoned idle games", "count", n)
+	}
+
 	// Exit non-zero only if everything failed — that is a real outage worth a
 	// red tick in Actions. A single failure among many is not.
 	if failed > 0 && done == 0 {

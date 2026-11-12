@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useMe } from "@/components/AppGate";
@@ -8,10 +9,12 @@ import Composer from "@/components/Composer";
 import CrisisNotice from "@/components/CrisisNotice";
 import { UNREAD_CHANGED } from "@/components/Rail";
 import ReportSheet from "@/components/ReportSheet";
+import ConstellationsPanel from "@/components/game/ConstellationsPanel";
+import InviteCard, { ConstellationGlyph } from "@/components/game/InviteCard";
 import { IconBack, IconMore } from "@/components/icons";
 import {
-  api, blockPeer, deletePeerMessage, type Peer, type PeerMessage, type ReportReason,
-  reportPeer, userMessage,
+  ApiError, type Invite, acceptInvite, api, blockPeer, declineInvite, deletePeerMessage, listInvites,
+  type Peer, type PeerMessage, type ReportReason, reportPeer, sendInvite, userMessage,
 } from "@/lib/api";
 import { useEvent, useEventsConnected } from "@/lib/events";
 import { scrollPaneToEnd } from "@/lib/scroll";
@@ -41,6 +44,10 @@ const gone = (m: Msg) => m.deleted || m.body === null;
  *  5. Delete, block and report exist before anything invites more contact.
  *     A block is silent: the blocked person sees "no longer accepting
  *     messages", never that they were blocked.
+ *  6. Constellations (behind me.games) rides the same thread: an invite is a
+ *     card at the end of it, and accepting takes both people to the board.
+ *     An invite past its expiry is hidden here at once; the server only
+ *     notices on its next cron pass.
  */
 export default function Circle() {
   const { me, setMe } = useMe();
@@ -54,8 +61,13 @@ export default function Circle() {
   const [menu, setMenu] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const [report, setReport] = useState<{ messageId?: string } | null>(null);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [, setTick] = useState(0);
   const pane = useRef<HTMLDivElement>(null);
   const live = useEventsConnected();
+  const router = useRouter();
+  const wide = useWide();
+  const games = me.games;
 
   // events arrive in closures registered once, so they read the open thread through a ref
   const activeRef = useRef<Peer | null>(null);
@@ -119,7 +131,87 @@ export default function Circle() {
     setThread((t) => t.map((m) => (m.mine && !m.readAt ? { ...m, readAt: now } : m)));
   });
 
-  useEffect(() => { scrollPaneToEnd(pane.current, true); }, [thread.length]);
+  // ---------------------------------------------------------- invites
+  const loadInvites = useCallback(async () => {
+    try { setInvites((await listInvites()).invites); } catch { /* the thread still works without them */ }
+  }, []);
+
+  useEffect(() => { if (games && me.peerOptIn) void loadInvites(); }, [games, me.peerOptIn, loadInvites]);
+
+  // same rule as the thread: poll only while the stream is down
+  useEffect(() => {
+    if (!games || !me.peerOptIn || live) return;
+    const id = setInterval(() => void loadInvites(), 60_000);
+    return () => clearInterval(id);
+  }, [games, me.peerOptIn, live, loadInvites]);
+
+  const upsert = (inv: Invite) =>
+    setInvites((all) => [...all.filter((i) => i.id !== inv.id), inv]);
+
+  useEvent<{ invite: Invite }>("invite.new", ({ invite }) => { if (games && invite) upsert(invite); });
+
+  useEvent<{ invite: Invite }>("invite.update", ({ invite }) => {
+    if (!games || !invite) return;
+    upsert(invite);
+    // the sender is waiting on this: take them to the board. the recipient's own tab
+    // routes from the accept response, and their other tabs stay where they are
+    if (invite.status === "accepted" && invite.gameId && invite.mine) {
+      router.push(`/circle/play/${invite.gameId}`);
+    }
+  });
+
+  const pending = invites.filter((i) => i.status === "pending" && new Date(i.expiresAt).getTime() > Date.now());
+  const threadInvites = active ? pending.filter((i) => i.peerId === active.id) : [];
+
+  // re-render while an invite is showing, so one that lapses leaves without a refetch
+  useEffect(() => {
+    if (pending.length === 0) return;
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [pending.length]);
+
+  async function invite() {
+    if (!active) return;
+    setMenu(false); setError(null); setNotice(null);
+    try {
+      const { invite: inv } = await sendInvite(active.id);
+      upsert(inv);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "invite_pending") { void loadInvites(); return; }
+      if (e instanceof ApiError && e.code === "peer_unavailable") {
+        setError(`${active.handle} is not taking invites right now.`);
+        return;
+      }
+      if (e instanceof ApiError && e.rateLimited) {
+        setError("That is a lot of invites for one hour. Try again a little later.");
+        return;
+      }
+      setError(msg(e));
+    }
+  }
+
+  async function accept(inv: Invite) {
+    try {
+      const { game } = await acceptInvite(inv.id);
+      router.push(`/circle/play/${game.id}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "invite_gone") {
+        setInvites((all) => all.filter((i) => i.id !== inv.id));
+        setNotice("That invite has already closed.");
+        return;
+      }
+      setError(msg(e));
+    }
+  }
+
+  async function decline(inv: Invite) {
+    try {
+      await declineInvite(inv.id);
+      setInvites((all) => all.filter((i) => i.id !== inv.id));
+    } catch (e) { setError(msg(e)); }
+  }
+
+  useEffect(() => { scrollPaneToEnd(pane.current, true); }, [thread.length, threadInvites.length]);
 
   async function openThread(p: Peer) {
     setActive(p); activeRef.current = p;
@@ -191,7 +283,7 @@ export default function Circle() {
     } catch (e) { setError(msg(e)); }
   }
 
-  if (!me.peerOptIn) return <OptInGate onJoin={() => void setOptIn(true)} error={error} />;
+  if (!me.peerOptIn) return <OptInGate onJoin={() => void setOptIn(true)} error={error} games={games} />;
 
   return (
     <div className="flex h-full">
@@ -231,6 +323,9 @@ export default function Circle() {
                     {p.online ? "online now" : relative(p.lastSeen)}
                   </span>
                 </span>
+                {pending.some((i) => i.peerId === p.id && !i.mine) && (
+                  <ConstellationGlyph className="h-3.5 w-3.5 shrink-0 text-violet-2" />
+                )}
                 {p.unread > 0 && (
                   <span className="grid h-4 min-w-4 place-items-center rounded-full bg-cyan px-1
                                    font-mono text-[.5625rem] font-bold text-bg">{p.unread}</span>
@@ -239,13 +334,18 @@ export default function Circle() {
             </li>
           ))}
         </ul>
+
+        {/* on a phone the list is the whole screen, so the panel lives under it */}
+        {games && !wide && (
+          <ConstellationsPanel className="max-h-[55%] shrink-0 overflow-y-auto border-t border-line px-4 py-4" />
+        )}
       </aside>
 
       {/* Thread */}
       <main className={`min-w-0 flex-1 flex-col ${active ? "flex" : "hidden sm:flex"}`}>
         {!active ? (
-          <div className="grid h-full place-items-center px-6 text-center">
-            <div>
+          <div className="grid h-full place-items-center overflow-y-auto px-6 py-8 text-center">
+            <div className="w-full">
               {/* Perched, not flying: nobody is waiting on you here. The
                   empty state is a rest, not a prompt to hurry. */}
               <Butterfly pose="rest" className="mx-auto h-6 w-6 text-violet-2/70" />
@@ -255,6 +355,9 @@ export default function Circle() {
               <p className="mx-auto mt-2 max-w-measure font-sans text-[.8125rem] leading-relaxed text-ink-3">
                 Messages wait for people who are offline. Nobody is expected to reply quickly.
               </p>
+              {games && wide && (
+                <ConstellationsPanel className="card mx-auto mt-8 w-full max-w-sm p-5 text-left" />
+              )}
             </div>
           </div>
         ) : (
@@ -282,7 +385,13 @@ export default function Circle() {
                                 bg-surface p-1.5 shadow-xl">
                   {!confirmBlock ? (
                     <>
-                      <MenuItem autoFocus onClick={() => { setMenu(false); setReport({}); }}>
+                      {games && threadInvites.length === 0 && (
+                        <MenuItem autoFocus onClick={() => void invite()}>
+                          invite to constellations
+                        </MenuItem>
+                      )}
+                      <MenuItem autoFocus={!games || threadInvites.length > 0}
+                                onClick={() => { setMenu(false); setReport({}); }}>
                         report {active.handle}
                       </MenuItem>
                       <MenuItem danger onClick={() => setConfirmBlock(true)}>
@@ -327,6 +436,11 @@ export default function Circle() {
                     <Bubble m={m} onDelete={() => void remove(m)}
                             onReport={() => setReport({ messageId: m.id })} />
                   </div>
+                ))}
+
+                {threadInvites.map((inv) => (
+                  <InviteCard key={inv.id} invite={inv}
+                              onAccept={() => accept(inv)} onDecline={() => decline(inv)} />
                 ))}
 
                 {crisis && <CrisisNotice text={crisis} />}
@@ -436,9 +550,10 @@ function MenuItem({ children, onClick, danger, autoFocus }: {
   );
 }
 
-function OptInGate({ onJoin, error }: { onJoin: () => void; error: string | null }) {
+function OptInGate({ onJoin, error, games }: { onJoin: () => void; error: string | null; games: boolean }) {
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col justify-center px-6 py-10">
+    <div className="h-full overflow-y-auto">
+    <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center px-6 py-10">
       <p className="label">The circle</p>
       <h1 className="mt-3 font-sans text-[1.75rem] font-semibold leading-tight tracking-[-.025em]">
         Other people are doing this too.
@@ -471,8 +586,25 @@ function OptInGate({ onJoin, error }: { onJoin: () => void; error: string | null
       <div className="mt-8">
         <button className="btn-primary" onClick={onJoin}>Join the circle</button>
       </div>
+
+      {/* astralis and solo games need nobody else, so they do not wait on joining */}
+      {games && <ConstellationsPanel className="card mt-10 p-5" />}
+    </div>
     </div>
   );
 }
 
 const msg = (e: unknown) => userMessage(e);
+
+/** sm and up: decides where the constellations panel goes, so it mounts (and fetches) once */
+function useWide(): boolean {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia("(min-width: 640px)");
+    const on = () => setWide(q.matches);
+    on();
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, []);
+  return wide;
+}

@@ -143,6 +143,21 @@ func (s *Server) Router() *gin.Engine {
 		c.POST("/notes", s.handleCreateNote)
 		c.PUT("/notes/:id", s.handleSaveNote)
 		c.DELETE("/notes/:id", s.handleDeleteNote)
+
+		// constellations. behind a flag until it has had a quiet week in beta;
+		// unregistered rather than refused, so a disabled game is a plain 404
+		if s.cfg.GamesEnabled {
+			c.POST("/peers/:id/invites", s.handleSendInvite)
+			c.POST("/games", s.handleCreateGame)
+			c.GET("/games/invites", s.handleListInvites)
+			c.POST("/games/invites/:id/accept", s.handleAcceptInvite)
+			c.POST("/games/invites/:id/decline", s.handleDeclineInvite)
+			c.GET("/games/active", s.handleActiveGames)
+			c.GET("/games/leaderboard", s.handleLeaderboard)
+			c.GET("/games/:id", s.handleGetGame)
+			c.POST("/games/:id/moves", s.handleMove)
+			c.POST("/me/leaderboard-opt-in", s.handleLeaderboardOptIn)
+		}
 	}
 
 	// the eval harness (services/evals) replays scripted turns through the real

@@ -360,6 +360,69 @@
     transition-property: transform;
     transition-timing-function: ease-in-out;
   }
+
+  /* ------------------------------------------------------------ constellations
+     The board (components/game/Board.tsx). Each player's colour is one
+     custom property, --p, set by a gp-* class, so lines, squares and halos
+     share it and the light theme follows the tokens for free. Everything
+     moves slowly or not at all: the game should feel like joining stars on a
+     clear night, not like a timer. */
+  .gp-you  { --p: var(--violet); }
+  .gp-them { --p: var(--cyan); }
+  .gp-bot  { --p: var(--violet-2); }
+
+  .game-swatch { @apply inline-block h-2 w-2 shrink-0 rounded-full; background: rgb(var(--p)); }
+
+  .game-board svg { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+
+  .game-star { animation: game-twinkle 6s ease-in-out infinite; }
+  .game-star-glow { fill: rgb(var(--violet-2) / .14); }
+  .game-star-core { fill: rgb(var(--ink) / .78); }
+  .game-star--cyan .game-star-glow { fill: rgb(var(--cyan) / .12); }
+  .game-star--on .game-star-glow { fill: rgb(var(--violet-2) / .24); }
+  .game-star--on.game-star--cyan .game-star-glow { fill: rgb(var(--cyan) / .2); }
+  .game-star--on .game-star-core { fill: rgb(var(--ink)); }
+  @keyframes game-twinkle {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .62; }
+  }
+
+  /* undrawn edges: a dotted guide, brightened only when a move is possible */
+  .game-guide {
+    stroke: rgb(var(--ink-3) / .55); stroke-width: .7; stroke-linecap: round;
+    stroke-dasharray: .01 2.2;
+    transition: stroke 160ms ease-out, stroke-width 160ms ease-out;
+  }
+  .game-hit { stroke: transparent; stroke-width: 13; stroke-linecap: butt; }
+  .game-edge { outline: none; }
+  .game-edge[aria-disabled="true"] { cursor: default; }
+  [data-live="true"] .game-edge { cursor: pointer; }
+  [data-live="true"] .game-edge:hover .game-guide,
+  [data-live="true"] .game-edge:focus-visible .game-guide {
+    stroke: rgb(var(--violet)); stroke-width: 1.15; stroke-dasharray: .01 1.5;
+  }
+  /* the keyboard always needs to see where it is, even while waiting */
+  .game-edge:focus-visible .game-guide { stroke: rgb(var(--violet-2) / .8); stroke-width: 1; }
+
+  .game-line {
+    stroke: rgb(var(--p)); stroke-width: 1.15; stroke-linecap: round;
+    stroke-dasharray: 1; stroke-dashoffset: 0;
+    animation: game-draw 560ms cubic-bezier(.2,.6,.2,1) both;
+  }
+  /* drawn before this tab was open, so the drawer is unknown: starlight, not a side */
+  .game-line--old { --p: var(--ink-2); opacity: .75; }
+  @keyframes game-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
+  .game-halo {
+    stroke: rgb(var(--p) / .3); stroke-width: 3.4; stroke-linecap: round;
+    animation: game-fade 900ms ease-out both;
+  }
+
+  .game-box { animation: game-fade 1.6s ease-out both; }
+  .game-box rect { fill: rgb(var(--p) / .13); stroke: rgb(var(--p) / .22); stroke-width: .35; }
+  .game-box-mark { fill: rgb(var(--p) / .75); }
+  .game-box-ring { fill: none; stroke: rgb(var(--p) / .75); stroke-width: .6; }
+  @keyframes game-fade { from { opacity: 0; } to { opacity: 1; } }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -379,4 +442,7 @@
   .ripple-layer[data-open="true"] { opacity: 1; transition-delay: 0s !important; }
   .ripple-hint { display: none; }
   .wing-contour path { animation: none !important; }
+
+  /* the board stays still: no twinkle, lines and squares simply appear */
+  .game-star, .game-line, .game-halo, .game-box { animation: none !important; }
 }

@@ -50,6 +50,8 @@ func (s *Server) handleMe(c *gin.Context) {
 		// handle drives onboarding: empty means Astralis has not yet asked
 		// what to call this person.
 		"handle": handle, "peerOptIn": u.PeerOptIn,
+		// the web hides every way into constellations when this is false
+		"games": s.cfg.GamesEnabled,
 	})
 }
 

@@ -13,6 +13,9 @@ const (
 	MessageDeleted = "message.deleted" // {peerId, messageId}
 	MessageRead    = "message.read"    // {peerId}
 	TurnStatus     = "turn.status"     // {sessionId, status}
+	InviteNew      = "invite.new"      // {invite}
+	InviteUpdate   = "invite.update"   // {invite}
+	GameUpdate     = "game.update"     // {game}, shaped for each receiver
 )
 
 type Event struct {

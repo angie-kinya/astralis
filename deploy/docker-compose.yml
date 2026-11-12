@@ -45,7 +45,9 @@ services:
       # Only the compose network may set X-Forwarded-For (that is Caddy).
       TRUSTED_PROXIES: 172.16.0.0/12,10.0.0.0/8,192.168.0.0/16
       REDIS_ADDR: ""
-      ADMIN_EMAIL_SHA256: "81dc40bb6eaace83fcb5400888c572a5936ea75f1e132fe0874a0e3f9842b18b *-"
+      ADMIN_EMAIL_SHA256: "81dc40bb6eaace83fcb5400888c572a5936ea75f1e132fe0874a0e3f9842b18b"
+      # constellations stays off unless deploy/.env says GAMES_ENABLED=true
+      GAMES_ENABLED: ${GAMES_ENABLED:-false}
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:

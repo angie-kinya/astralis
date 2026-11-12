@@ -64,6 +64,10 @@ type Config struct {
 	SafetyClassifierURL string
 	SafetyThreshold     float64
 
+	// GamesEnabled registers the constellations routes (GAMES_ENABLED, default
+	// false). off means the routes do not exist at all, not that they refuse
+	GamesEnabled bool
+
 	RateLimitPerMin int
 	// Sign-in attempts per client IP per minute.
 	AuthRateLimitPerMin int
@@ -95,6 +99,7 @@ func Load() (*Config, error) {
 		EmbedModel:          get("EMBED_MODEL", "text-embedding-3-small"),
 		SafetyClassifierURL: get("SAFETY_CLASSIFIER_URL", ""),
 		AgentRepair:         get("AGENT_REPAIR", "true") != "false",
+		GamesEnabled:        get("GAMES_ENABLED", "") == "true",
 	}
 	for _, v := range strings.Split(get("AGENT_VARIANTS", "steady,terse"), ",") {
 		if v = strings.TrimSpace(v); v != "" {
@@ -107,9 +112,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// only the first field of each entry counts, so a pasted `sha256sum` line
+	// ("<hash>  -" or "<hash> *-") still matches instead of silently never doing so
 	for _, h := range strings.Split(get("ADMIN_EMAIL_SHA256", ""), ",") {
-		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
-			c.AdminEmailHashes = append(c.AdminEmailHashes, h)
+		if f := strings.Fields(h); len(f) > 0 {
+			c.AdminEmailHashes = append(c.AdminEmailHashes, strings.ToLower(f[0]))
 		}
 	}
 
