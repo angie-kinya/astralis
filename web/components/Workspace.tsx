@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import Butterfly from "@/components/Butterflies";
+import { AstralisMark, Gutter } from "@/components/Speaker";
 import Composer from "@/components/Composer";
 import EndCard from "@/components/EndCard";
 import LastTime from "@/components/LastTime";
@@ -210,14 +210,15 @@ function Opener() {
   // picked once per mount, so a re-render never swaps the line under the reader
   const [line] = useState(() => OPENERS[Math.floor(Math.random() * OPENERS.length)]!);
   return (
-    <div className="max-w-reading border-l border-violet/45 pl-4 sm:pl-5">
-      {/* Perched at the head of the thread: the conversation starts calm. */}
-      <Butterfly pose="rest" className="mb-2.5 h-4 w-4 text-violet-2/75" />
-      <p className="reply text-ink-2">{line}</p>
-      <p className="mt-4 font-mono text-[.625rem] leading-relaxed text-ink-3">
-        when published research would help, astralis looks it up before it answers.
-        ask &ldquo;what does the evidence actually say?&rdquo; at any point.
-      </p>
+    <div className="flex gap-2.5 sm:gap-3">
+      <Gutter><AstralisMark /></Gutter>
+      <div className="bubble bubble--astralis max-w-reading">
+        <p className="reply text-ink-2">{line}</p>
+        <p className="mt-3 font-mono text-[.625rem] leading-relaxed text-ink-3">
+          when published research would help, astralis looks it up before it answers.
+          ask &ldquo;what does the evidence actually say?&rdquo; at any point.
+        </p>
+      </div>
     </div>
   );
 }

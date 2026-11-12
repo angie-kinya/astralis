@@ -1,18 +1,19 @@
-import Butterfly from "@/components/Butterflies";
+import { AstralisMark, Gutter } from "@/components/Speaker";
 
 /**
  * no skeleton, no dots, no "working on a reply". a skeleton is the loading
  * signature of every llm app, and a phrase that is always shown says nothing.
  *
- * the only words here come from the agent itself over sse (turn.status), and
- * it sends one only when it is true and specific: "reading 2 studies" means
- * retrieval actually ran. with no status there is just the resting wing.
+ * the waiting state is astralis's own mark, breathing slowly in the gutter
+ * where its reply will land, so the answer arrives where the eye already is.
+ * the only words come from the agent over sse (turn.status), sent only when
+ * true and specific: "reading 2 studies" means retrieval actually ran
  */
 export default function Thinking({ status }: { status: string | null }) {
   return (
-    <div className="animate-fade border-l border-violet/45 pl-4 sm:pl-5" role="status" aria-live="polite">
-      <p className="flex items-center gap-2 font-mono text-[.625rem] tracking-[.06em] text-ink-3">
-        <Butterfly pose="hover" className="h-3.5 w-3.5 shrink-0 text-violet-2" />
+    <div className="flex animate-fade items-start gap-2.5 sm:gap-3" role="status" aria-live="polite">
+      <Gutter><AstralisMark breathing /></Gutter>
+      <p className="mt-2.5 font-mono text-[.625rem] tracking-[.06em] text-ink-3 sm:mt-3">
         {status && <span key={status} className="animate-fade">{status}</span>}
       </p>
       {/* screen readers still need to know something is happening */}

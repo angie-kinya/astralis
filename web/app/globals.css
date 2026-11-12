@@ -193,6 +193,23 @@
 
   /* Astralis's own voice. Sans, generous leading, real paragraph rhythm. */
   .reply { @apply font-sans text-[.9375rem] leading-[1.78] text-ink; }
+
+  /* translucent panes lift the thread off the grid and glyph field without
+     hiding them. the blur is light on purpose: enough to calm the dots behind
+     the text, cheap enough for a phone to scroll */
+  .bubble {
+    @apply rounded-2xl border px-3.5 py-2.5 backdrop-blur-[3px] sm:px-4 sm:py-3;
+  }
+  .bubble--astralis { @apply border-violet/25 bg-surface/80; }
+  .bubble--you      { @apply border-line bg-raised/55; }
+
+  /* the waiting mark: one slow breath every 3.6s, never a spinner. the orbit
+     and iris share the opacity, so the whole eye swells and settles together */
+  .mark-breathe { animation: mark-breathe 3.6s ease-in-out infinite; transform-origin: center; }
+  @keyframes mark-breathe {
+    0%, 100% { opacity: .4; transform: scale(.92); }
+    50%      { opacity: 1;  transform: scale(1.06); }
+  }
   .reply > p + p { @apply mt-4; }
   .reply strong  { @apply font-semibold text-ink; }
   .reply a       { @apply text-violet-2 underline decoration-violet/40 underline-offset-2; }

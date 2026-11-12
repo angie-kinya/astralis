@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import CrisisNotice from "@/components/CrisisNotice";
 import Feedback from "@/components/Feedback";
 import SourceList from "@/components/SourceList";
+import { AstralisMark, Gutter, YouMark } from "@/components/Speaker";
 import type { Source } from "@/lib/api";
 import { paragraphs } from "@/lib/format";
 
@@ -18,9 +19,10 @@ export type Turn = {
 };
 
 /**
- * no speaker labels. in a one-to-one chat the speaker is obvious, and a mono
- * `astralis ›` reads like a terminal prompt, i.e. a tool. the left border
- * colour is the only cue: violet for astralis, line for you.
+ * no text labels: a mono `astralis ›` reads like a terminal prompt, i.e. a
+ * tool. the speaker is a glyph in the gutter (the eye for astralis, the
+ * butterfly for you) and the bubble tint backs it up. bubbles are translucent
+ * so the thread stays legible without hiding the background
  *
  * an assistant reply is rendered as short bursts, one block per paragraph,
  * all arriving together. assistants answer in slabs; people send bursts. no
@@ -34,9 +36,13 @@ export default function TurnView({ turn }: { turn: Turn }) {
 
   if (turn.role === "user") {
     return (
-      <article className="animate-rise border-l border-line pl-4 sm:pl-5">
-        <p className="max-w-reading whitespace-pre-wrap font-sans text-[.9375rem]
-                      leading-[1.7] text-ink-2">{turn.content}</p>
+      <article className="flex animate-rise gap-2.5 sm:gap-3">
+        <Gutter><YouMark /></Gutter>
+        <div className="bubble bubble--you max-w-reading">
+          <p className="whitespace-pre-wrap font-sans text-[.9375rem] leading-[1.7] text-ink-2">
+            {turn.content}
+          </p>
+        </div>
       </article>
     );
   }
@@ -49,21 +55,22 @@ export default function TurnView({ turn }: { turn: Turn }) {
   };
 
   return (
-    <article className="group animate-rise space-y-2" {...touch}>
-      {paragraphs(turn.content).map((p, i) => (
-        <div key={i} className="reply max-w-reading border-l border-violet/45 pl-4 sm:pl-5">
-          <p className="whitespace-pre-wrap">{renderBold(p)}</p>
-        </div>
-      ))}
+    <article className="group flex animate-rise gap-2.5 sm:gap-3" {...touch}>
+      <Gutter><AstralisMark /></Gutter>
+      <div className="min-w-0 space-y-2">
+        {paragraphs(turn.content).map((p, i) => (
+          <div key={i} className="reply bubble bubble--astralis max-w-reading">
+            <p className="whitespace-pre-wrap">{renderBold(p)}</p>
+          </div>
+        ))}
 
-      {!!turn.sources?.length && (
-        <div className="pl-4 sm:pl-5"><SourceList sources={turn.sources} /></div>
-      )}
-      {turn.recommendationId && (
-        <div className="pl-4 sm:pl-5">
-          <Feedback recommendationId={turn.recommendationId} revealed={revealed} />
-        </div>
-      )}
+        {!!turn.sources?.length && <div className="pl-1"><SourceList sources={turn.sources} /></div>}
+        {turn.recommendationId && (
+          <div className="pl-1">
+            <Feedback recommendationId={turn.recommendationId} revealed={revealed} />
+          </div>
+        )}
+      </div>
     </article>
   );
 }
