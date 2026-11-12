@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // PresenceWindow is how recently someone must have made a request to count as
@@ -51,7 +52,8 @@ func (s *Store) SetPeerOptIn(ctx context.Context, userID string, in bool) error 
 
 // ListPeers returns everyone who has opted in, with unread counts, online
 // first. The LEFT JOIN counts unread messages from that peer in one query
-// rather than N+1 round trips.
+// rather than N+1 round trips. a block in either direction removes the pair
+// from both lists, so the blocked person sees someone who simply left
 func (s *Store) ListPeers(ctx context.Context, userID string) ([]Peer, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT u.id, COALESCE(u.handle,'someone'), u.last_seen_at,
@@ -59,8 +61,12 @@ func (s *Store) ListPeers(ctx context.Context, userID string) ([]Peer, error) {
 		       COUNT(m.id) FILTER (WHERE m.read_at IS NULL) AS unread
 		FROM users u
 		LEFT JOIN peer_messages m
-		       ON m.sender_id = u.id AND m.recipient_id = $1 AND m.crisis_flagged = false
+		       ON m.sender_id = u.id AND m.recipient_id = $1
+		      AND m.crisis_flagged = false AND m.deleted_at IS NULL
 		WHERE u.peer_opt_in = true AND u.id <> $1 AND u.handle IS NOT NULL
+		  AND NOT EXISTS (SELECT 1 FROM peer_blocks b
+		                  WHERE (b.blocker_id = $1 AND b.blocked_id = u.id)
+		                     OR (b.blocker_id = u.id AND b.blocked_id = $1))
 		GROUP BY u.id, u.handle, u.last_seen_at
 		ORDER BY online DESC, u.last_seen_at DESC
 		LIMIT 100`, userID, PresenceWindow)
@@ -82,10 +88,13 @@ func (s *Store) ListPeers(ctx context.Context, userID string) ([]Peer, error) {
 	return out, rows.Err()
 }
 
+// PeerMessage is one bubble. Body is nil once the sender deletes it; the row
+// stays as a tombstone so the thread still reads in order
 type PeerMessage struct {
 	ID        string    `json:"id"`
 	Mine      bool      `json:"mine"`
-	Body      string    `json:"body"`
+	Body      *string   `json:"body"`
+	Deleted   bool      `json:"deleted"`
 	CreatedAt time.Time `json:"createdAt"`
 	ReadAt    *string   `json:"readAt"`
 }
@@ -95,8 +104,8 @@ type PeerMessage struct {
 // delivered and they do not belong in anyone's record of the conversation.
 func (s *Store) Conversation(ctx context.Context, userID, peerID string, n int) ([]PeerMessage, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, sender_id = $1 AS mine, body, created_at, read_at FROM (
-			SELECT id, sender_id, body, created_at, read_at
+		SELECT id, sender_id = $1 AS mine, body, deleted_at IS NOT NULL, created_at, read_at FROM (
+			SELECT id, sender_id, body, deleted_at, created_at, read_at
 			FROM peer_messages
 			WHERE crisis_flagged = false
 			  AND ((sender_id=$1 AND recipient_id=$2) OR (sender_id=$2 AND recipient_id=$1))
@@ -111,7 +120,7 @@ func (s *Store) Conversation(ctx context.Context, userID, peerID string, n int) 
 	for rows.Next() {
 		var m PeerMessage
 		var read *time.Time
-		if err := rows.Scan(&m.ID, &m.Mine, &m.Body, &m.CreatedAt, &read); err != nil {
+		if err := rows.Scan(&m.ID, &m.Mine, &m.Body, &m.Deleted, &m.CreatedAt, &read); err != nil {
 			return nil, err
 		}
 		if read != nil {
@@ -123,36 +132,121 @@ func (s *Store) Conversation(ctx context.Context, userID, peerID string, n int) 
 	return out, rows.Err()
 }
 
-// SendPeerMessage refuses to deliver to someone who has not opted in — checked
-// here in the same statement rather than in the handler, so there is no window
-// between the check and the write.
-func (s *Store) SendPeerMessage(ctx context.Context, senderID, recipientID, body string, flagged bool) (string, error) {
-	var id string
+// SendPeerMessage refuses to deliver to someone who has not opted in, or across
+// a block in either direction. both are checked in the same statement as the
+// write, so there is no window between the check and the insert. a blocked
+// sender gets the same ErrPeerUnavailable as an opt-out and is never told why
+func (s *Store) SendPeerMessage(ctx context.Context, senderID, recipientID, body string, flagged bool) (PeerMessage, error) {
+	m := PeerMessage{Mine: true, Body: &body}
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO peer_messages (sender_id, recipient_id, body, crisis_flagged)
 		SELECT $1, $2, $3, $4
 		WHERE EXISTS (SELECT 1 FROM users WHERE id=$2 AND peer_opt_in=true)
-		RETURNING id`, senderID, recipientID, body, flagged).Scan(&id)
+		  AND NOT EXISTS (SELECT 1 FROM peer_blocks
+		                  WHERE (blocker_id = $2 AND blocked_id = $1)
+		                     OR (blocker_id = $1 AND blocked_id = $2))
+		RETURNING id, created_at`, senderID, recipientID, body, flagged).Scan(&m.ID, &m.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrPeerUnavailable
+		return PeerMessage{}, ErrPeerUnavailable
 	}
-	return id, err
+	return m, err
 }
 
 var ErrPeerUnavailable = errors.New("peer is not accepting messages")
 
-func (s *Store) MarkConversationRead(ctx context.Context, userID, peerID string) error {
-	_, err := s.pool.Exec(ctx, `
+// MarkConversationRead returns how many messages it marked, so the caller only
+// tells the sender about a read that actually happened
+func (s *Store) MarkConversationRead(ctx context.Context, userID, peerID string) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE peer_messages SET read_at=now()
 		WHERE recipient_id=$1 AND sender_id=$2 AND read_at IS NULL`, userID, peerID)
+	return tag.RowsAffected(), err
+}
+
+// DeletePeerMessage erases a message's content and keeps the tombstone.
+// only the sender, only once, never a flagged message (those were never delivered)
+func (s *Store) DeletePeerMessage(ctx context.Context, userID, msgID string) (peerID string, err error) {
+	err = s.pool.QueryRow(ctx, `
+		UPDATE peer_messages SET body = NULL, deleted_at = now()
+		WHERE id = $2 AND sender_id = $1 AND deleted_at IS NULL AND crisis_flagged = false
+		RETURNING recipient_id`, userID, msgID).Scan(&peerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return peerID, err
+}
+
+// ------------------------------------------------------------------ safety
+
+// BlockPeer is idempotent: blocking twice is not an error
+func (s *Store) BlockPeer(ctx context.Context, blockerID, blockedID string) error {
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO peer_blocks (blocker_id, blocked_id)
+		SELECT $1::uuid, $2::uuid WHERE $1::uuid <> $2::uuid AND EXISTS (SELECT 1 FROM users WHERE id=$2::uuid)
+		ON CONFLICT DO NOTHING`, blockerID, blockedID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		// either already blocked (fine) or no such person (not found)
+		var exists bool
+		if err := s.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM users WHERE id=$1::uuid) AND $1::uuid <> $2::uuid`, blockedID, blockerID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return ErrNotFound
+		}
+	}
+	return nil
+}
+
+func (s *Store) UnblockPeer(ctx context.Context, blockerID, blockedID string) error {
+	_, err := s.pool.Exec(ctx,
+		`DELETE FROM peer_blocks WHERE blocker_id=$1 AND blocked_id=$2`, blockerID, blockedID)
 	return err
+}
+
+// ReportPeer files a moderation report. with a message id, the snapshot is
+// copied in SQL from that row, so the client cannot put words in anyone's mouth,
+// and only a message the reported person sent to the reporter qualifies.
+// without one, it reports the person, and they must exist
+func (s *Store) ReportPeer(ctx context.Context, reporterID, reportedID, msgID, reason string) error {
+	var tag pgconn.CommandTag
+	var err error
+	if msgID != "" {
+		tag, err = s.pool.Exec(ctx, `
+			INSERT INTO peer_reports (reporter_id, reported_id, peer_message_id, body_snapshot, reason)
+			SELECT $1, $2, m.id, m.body, $4 FROM peer_messages m
+			WHERE m.id = $3 AND m.sender_id = $2 AND m.recipient_id = $1`,
+			reporterID, reportedID, msgID, reason)
+	} else {
+		tag, err = s.pool.Exec(ctx, `
+			INSERT INTO peer_reports (reporter_id, reported_id, reason)
+			SELECT $1::uuid, $2::uuid, $3 WHERE $1::uuid <> $2::uuid AND EXISTS (SELECT 1 FROM users WHERE id=$2::uuid)`,
+			reporterID, reportedID, reason)
+	}
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UnreviewedReports is a count for the admin overview; no content leaves the table
+func (s *Store) UnreviewedReports(ctx context.Context) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM peer_reports WHERE NOT reviewed`).Scan(&n)
+	return n, err
 }
 
 func (s *Store) UnreadTotal(ctx context.Context, userID string) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx, `
 		SELECT count(*) FROM peer_messages
-		WHERE recipient_id=$1 AND read_at IS NULL AND crisis_flagged=false`, userID).Scan(&n)
+		WHERE recipient_id=$1 AND read_at IS NULL AND crisis_flagged=false AND deleted_at IS NULL`, userID).Scan(&n)
 	return n, err
 }
 

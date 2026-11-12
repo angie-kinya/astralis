@@ -289,7 +289,8 @@ func (s *Store) SessionUser(ctx context.Context, sessionID string) (string, erro
 }
 
 // feedback
-func (s *Store) SaveRecommendation(ctx context.Context, sessionID, messageID string, chunkIDs, citedIDs []string) (string, error) {
+// variant is the voice that wrote the reply, so ratings can credit it (agent/variant.go)
+func (s *Store) SaveRecommendation(ctx context.Context, sessionID, messageID, variant string, chunkIDs, citedIDs []string) (string, error) {
 	if chunkIDs == nil {
 		chunkIDs = []string{}
 	}
@@ -298,8 +299,8 @@ func (s *Store) SaveRecommendation(ctx context.Context, sessionID, messageID str
 	}
 	var id string
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO recommendations (session_id, message_id, source_chunk_ids, cited_chunk_ids)
-		VALUES ($1,$2,$3,$4) RETURNING id`, sessionID, messageID, chunkIDs, citedIDs).Scan(&id)
+		INSERT INTO recommendations (session_id, message_id, source_chunk_ids, cited_chunk_ids, prompt_variant)
+		VALUES ($1,$2,$3,$4,$5) RETURNING id`, sessionID, messageID, chunkIDs, citedIDs, nullIfEmpty(variant)).Scan(&id)
 	return id, err
 }
 

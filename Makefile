@@ -3,7 +3,7 @@ COMPOSE ?= podman-compose
 GATEWAY  = services/gateway
 
 .PHONY: help up down logs migrate psql api worker research classifier web smoke smoke-api \
-        test test-go test-py lint fmt tidy check clean
+        test test-go test-py lint fmt tidy check clean eval eval-judge
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -54,6 +54,17 @@ fmt:        ## Format Go code in place
 tidy:       ## Sync go.mod/go.sum with actual imports
 	cd $(GATEWAY) && go mod tidy
 check: lint test  ## What CI runs. Run it before you push.
+
+# ------------------------------------------------------------ evals (needs `make api` running in development)
+EVALS = services/evals
+eval:       ## Replay the 30 scenarios, score them, gate against the previous run
+	cd $(EVALS) && python run.py && \
+	  new=$$(ls -t runs/*.jsonl | head -1); old=$$(ls -t runs/*.jsonl | sed -n 2p); \
+	  python gate.py $$new $${old:+--baseline $$old}
+eval-judge: ## Pairwise judge the newest run against OLD=runs/<sha>.jsonl, then gate (costs api calls)
+	@test -n "$(OLD)" || (echo "usage: make eval-judge OLD=runs/<sha>.jsonl"; exit 1)
+	cd $(EVALS) && new=$$(ls -t runs/*.jsonl | head -1) && python judge.py $(OLD) $$new && \
+	  python gate.py $$new --baseline $(OLD) --judged judged/$$(basename $$new .jsonl)_vs_$$(basename $(OLD) .jsonl).json
 
 clean:      ## Remove build artefacts and the trained model
 	rm -rf $(GATEWAY)/bin services/safety-classifier/models web/.next

@@ -32,8 +32,6 @@ export function useMe() {
 export default function AppGate({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [unread, setUnread] = useState(0);
-
   const refresh = useCallback(async () => {
     try { setMe(await api<Me>("/me")); }
     catch (e) {
@@ -43,23 +41,6 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
-
-  // Poll for unread peer messages. Polling rather than websockets is a
-  // deliberate call: it costs one cheap query every 20s, survives free-tier
-  // hosting that sleeps, and needs no connection state to get wrong.
-  useEffect(() => {
-    if (!me?.consented || !me.handle) return;
-    let alive = true;
-    const tick = async () => {
-      try {
-        const { unread } = await api<{ unread: number }>("/peers/unread");
-        if (alive) setUnread(unread);
-      } catch { /* transient; the next tick retries */ }
-    };
-    void tick();
-    const id = setInterval(tick, 20_000);
-    return () => { alive = false; clearInterval(id); };
-  }, [me?.consented, me?.handle]);
 
   // The glyph field is rendered once, outside every branch below, so it
   // stays mounted from "Connecting…" through onboarding into the modules:
@@ -88,7 +69,8 @@ export default function AppGate({ children }: { children: React.ReactNode }) {
     return (
       <MeContext.Provider value={{ me, refresh, setMe }}>
         <div className="flex h-dvh flex-col md:flex-row">
-          <Rail unread={unread} />
+          {/* the unread badge lives in Rail: it only mounts after consent and a name */}
+          <Rail />
           <div className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pb-[3.75rem]">
             <header className="flex shrink-0 items-center gap-4 border-b border-line px-4 py-2.5">
               <Wordmark withText={false} />

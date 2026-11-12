@@ -1,0 +1,127 @@
+# the agent eval gate. manual on purpose: every run calls real models, so it costs
+# money and should run when internal/agent changes, not on every push.
+#
+# replays services/evals/scenarios.yaml against the candidate (this ref) and a baseline
+# sha side by side, each with its own database, then metrics -> judge -> gate.
+# a baseline from before the harness existed has no /dev/turn, so the first run only
+# records the candidate as the new baseline.
+name: evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "baseline commit sha (blank = candidate only, records a baseline)"
+        required: false
+      judge_sample:
+        description: "max pairs for the llm judge (0 = all)"
+        default: "60"
+      variant:
+        description: "pin a voice variant (blank = bandit default)"
+        required: false
+
+concurrency: { group: evals, cancel-in-progress: false }
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: astralis, POSTGRES_PASSWORD: astralis, POSTGRES_DB: astralis }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U astralis"
+          --health-interval 5s --health-retries 10
+    env:
+      PGPASSWORD: astralis
+      ENV: development # the only env that registers POST /api/v1/dev/turn
+      AUTH_SECRET: evals-only-not-a-secret-0123456789abcdef
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SAFETY_CLASSIFIER_URL: http://localhost:8000
+      RATE_LIMIT_PER_MIN: "1000"
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 } # the baseline sha must be reachable
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/gateway/go.mod
+          cache-dependency-path: services/gateway/go.sum
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+
+      # the classifier runs too: crisis scenarios must be caught by the same two layers as production
+      - name: safety classifier
+        working-directory: services/safety-classifier
+        run: |
+          pip install -r requirements.txt
+          python train.py
+          nohup uvicorn app:app --port 8000 > /tmp/classifier.log 2>&1 &
+
+      - name: candidate api
+        run: |
+          for f in db/migrations/*.sql; do psql -h localhost -U astralis -d astralis -v ON_ERROR_STOP=1 -q -f "$f"; done
+          (cd services/gateway && go build -o /tmp/api-new ./cmd/api)
+          DATABASE_URL=postgres://astralis:astralis@localhost:5432/astralis?sslmode=disable PORT=8080 \
+            nohup /tmp/api-new > /tmp/api-new.log 2>&1 &
+
+      - name: baseline api
+        id: base
+        if: inputs.baseline != ''
+        run: |
+          git worktree add /tmp/base "${{ inputs.baseline }}"
+          if [ ! -f /tmp/base/services/gateway/internal/api/dev.go ]; then
+            echo "baseline predates the harness; recording a baseline instead"; exit 0
+          fi
+          psql -h localhost -U astralis -d astralis -c "CREATE DATABASE astralis_base"
+          for f in /tmp/base/db/migrations/*.sql; do psql -h localhost -U astralis -d astralis_base -v ON_ERROR_STOP=1 -q -f "$f"; done
+          (cd /tmp/base/services/gateway && go build -o /tmp/api-base ./cmd/api)
+          DATABASE_URL=postgres://astralis:astralis@localhost:5432/astralis_base?sslmode=disable PORT=8081 \
+            nohup /tmp/api-base > /tmp/api-base.log 2>&1 &
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: wait for apis
+        run: |
+          for p in 8080 ${{ steps.base.outputs.ready && '8081' || '' }} 8000; do
+            for i in $(seq 1 30); do curl -sf localhost:$p/healthz >/dev/null 2>&1 && break || sleep 2; done
+          done
+
+      - name: replay
+        working-directory: services/evals
+        env: { GIT_SHA: "${{ github.sha }}" }
+        run: |
+          pip install -r requirements.txt
+          v="${{ inputs.variant }}"
+          API_URL=http://localhost:8080 python run.py ${v:+--variant $v} --out runs/new.jsonl
+          if [ "${{ steps.base.outputs.ready }}" = "true" ]; then
+            API_URL=http://localhost:8081 python run.py ${v:+--variant $v} --out runs/base.jsonl
+          fi
+
+      - name: judge
+        if: steps.base.outputs.ready == 'true'
+        working-directory: services/evals
+        env: { JUDGE_MODEL: claude-sonnet-5-5 }
+        run: python judge.py runs/base.jsonl runs/new.jsonl --sample ${{ inputs.judge_sample }}
+
+      - name: gate
+        working-directory: services/evals
+        run: |
+          if [ "${{ steps.base.outputs.ready }}" = "true" ]; then
+            python gate.py runs/new.jsonl --baseline runs/base.jsonl --judged judged/new_vs_base.json
+          else
+            python gate.py runs/new.jsonl
+          fi
+
+      # commit results.csv yourself from the artifact: ci never pushes to main
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-${{ github.sha }}
+          path: |
+            services/evals/runs/*.jsonl
+            services/evals/judged/*.json
+            services/evals/results.csv
+            /tmp/*.log

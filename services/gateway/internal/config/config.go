@@ -44,6 +44,12 @@ type Config struct {
 	// RespondEffort is passed to the reply model as output_config.effort
 	// Empty leaves it out, which every model accepts
 	RespondEffort string
+	// AgentRepair allows one revision pass on a reply that fails the style
+	// lint (AGENT_REPAIR, default true). false = log-only: violations recorded, nothing revised
+	AgentRepair bool
+	// AgentVariants are the voices the bandit chooses between (AGENT_VARIANTS,
+	// default "steady,terse"). one name turns the bandit off
+	AgentVariants []string
 	// MinSimilarity is the cosine similarity below which a passage is too loosely related to show the model
 	MinSimilarity float64
 	// AdminEmailHashes are lowercase hex SHA-256 digests of the emails allowed
@@ -88,6 +94,12 @@ func Load() (*Config, error) {
 		OpenAIAPIKey:        get("OPENAI_API_KEY", ""),
 		EmbedModel:          get("EMBED_MODEL", "text-embedding-3-small"),
 		SafetyClassifierURL: get("SAFETY_CLASSIFIER_URL", ""),
+		AgentRepair:         get("AGENT_REPAIR", "true") != "false",
+	}
+	for _, v := range strings.Split(get("AGENT_VARIANTS", "steady,terse"), ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			c.AgentVariants = append(c.AgentVariants, v)
+		}
 	}
 	for _, p := range strings.Split(get("TRUSTED_PROXIES", "127.0.0.1,::1,172.16.0.0/12,10.0.0.0/8"), ",") {
 		if p = strings.TrimSpace(p); p != "" {

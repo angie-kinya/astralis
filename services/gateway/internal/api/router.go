@@ -11,6 +11,7 @@ import (
 	"astralis/gateway/internal/config"
 	"astralis/gateway/internal/mail"
 	"astralis/gateway/internal/reading"
+	"astralis/gateway/internal/realtime"
 	"astralis/gateway/internal/safety"
 	"astralis/gateway/internal/store"
 
@@ -30,12 +31,14 @@ type Server struct {
 	// would let a sign-in flood from one address eat into chat allowances.
 	authLimiter *rateLimiter
 	reading     *reading.Service
+	// hub pushes circle messages and turn status to open tabs (GET /events)
+	hub *realtime.Hub
 }
 
 func NewServer(cfg *config.Config, s *store.Store, ag *agent.Agent, f *safety.Filter,
-	q *asynq.Client, m mail.Sender) *Server {
+	q *asynq.Client, m mail.Sender, h *realtime.Hub) *Server {
 	return &Server{
-		cfg: cfg, store: s, agent: ag, filter: f, queue: q, mailer: m,
+		cfg: cfg, store: s, agent: ag, filter: f, queue: q, mailer: m, hub: h,
 		limiter:     newRateLimiter(cfg.RateLimitPerMin),
 		authLimiter: newRateLimiter(cfg.AuthRateLimitPerMin),
 		reading:     reading.New(),
@@ -102,6 +105,10 @@ func (s *Server) Router() *gin.Engine {
 		// is stored, and the response is the same for everyone.
 		v1.GET("/reading/latest", s.rateLimit(), s.handleLatestReading)
 
+		// the live stream. consent but no rate limit: one long-lived request per
+		// tab must not eat the allowance that chat and circle sends draw on
+		v1.GET("/events", s.requireConsent(), s.handleEvents)
+
 		// Everything that stores conversation content sits behind consent as a rate limit.
 		// Enforcing it here structurally beats trusting six handlers to each remember.
 		c := v1.Group("", s.requireConsent(), s.rateLimit())
@@ -110,7 +117,14 @@ func (s *Server) Router() *gin.Engine {
 		c.GET("/sessions/:id/messages", s.handleGetMessages)
 		c.POST("/sessions/:id/messages", s.handleSendMessage)
 		c.POST("/sessions/:id/end", s.handleEndSession)
+		c.POST("/sessions/:id/rating", s.handleRateSession)
 		c.POST("/feedback", s.handleFeedback)
+
+		// what astralis remembers. person_facts are listed and deletable one by
+		// one, which is the condition they were consented to under
+		c.GET("/me/facts", s.handleListFacts)
+		c.DELETE("/me/facts/:id", s.handleDeleteFact)
+		c.GET("/me/last-time", s.handleLastTime)
 
 		// The circle. Peer messages run through the same safety filter as the
 		// agent path -- see handleSendPeerMessage for why that matters more
@@ -119,12 +133,23 @@ func (s *Server) Router() *gin.Engine {
 		c.GET("/peers/unread", s.handleUnread)
 		c.GET("/peers/:id/messages", s.handleGetConversation)
 		c.POST("/peers/:id/messages", s.handleSendPeerMessage)
+		c.DELETE("/peers/:id/messages/:msgId", s.handleDeletePeerMessage)
+		c.POST("/peers/:id/block", s.handleBlockPeer)
+		c.DELETE("/peers/:id/block", s.handleUnblockPeer)
+		c.POST("/peers/:id/report", s.handleReportPeer)
 
 		// Notes never reach a model, an embedder, or the retrieval index.
 		c.GET("/notes", s.handleListNotes)
 		c.POST("/notes", s.handleCreateNote)
 		c.PUT("/notes/:id", s.handleSaveNote)
 		c.DELETE("/notes/:id", s.handleDeleteNote)
+	}
+
+	// the eval harness (services/evals) replays scripted turns through the real
+	// agent as scratch users it creates itself, so it sits outside authenticate.
+	// never registered outside development: in production the route does not exist
+	if s.cfg.Env == "development" {
+		r.POST("/api/v1/dev/turn", s.handleDevTurn)
 	}
 	return r
 }

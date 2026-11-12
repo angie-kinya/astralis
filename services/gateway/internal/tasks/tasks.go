@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"astralis/gateway/internal/rag"
-	"astralis/gateway/internal/store"
+	"astralis/gateway/internal/agent"
 
 	"github.com/hibiken/asynq"
 )
@@ -26,26 +25,15 @@ func NewSummariseTask(sessionID, userID string) (*asynq.Task, error) {
 	return asynq.NewTask(TypeSummariseSession, b, asynq.MaxRetry(3)), nil
 }
 
-func SummariseHandler(s *store.Store, engine *rag.Engine) asynq.HandlerFunc {
+// same consolidation as cmd/summarise (summary + person_facts), so the queue
+// path and the cron path can never drift apart
+func SummariseHandler(memory *agent.Memory) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
 		var p SummarisePayload
 		if err := json.Unmarshal(t.Payload(), &p); err != nil {
 			return asynq.SkipRetry
 		}
-
-		msgs, err := s.RecentMessages(ctx, p.SessionID, 50)
-		if err != nil {
-			return err
-		}
-		if len(msgs) < 4 {
-			return nil
-		}
-
-		summary, err := engine.Summarise(ctx, msgs)
-		if err != nil {
-			return err
-		}
-		if err := s.SaveSummary(ctx, p.SessionID, p.UserID, summary); err != nil {
+		if err := memory.Consolidate(ctx, p.SessionID, p.UserID); err != nil {
 			return err
 		}
 

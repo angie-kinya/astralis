@@ -32,6 +32,10 @@ const SECTIONS = [
     p: "Your email address (to sign you in), the name you chose, every message you send and every reply you receive, and a short factual summary of each conversation so the tool has continuity between sessions. Nothing else.",
   },
   {
+    h: "What Astralis remembers about you",
+    p: "Astralis keeps short facts you mention: the people in your work life, events coming up, things you said you would try, and what helped. They let it say \"is this the same audit that moved to Friday?\" instead of starting from zero. Every fact is listed under What Astralis remembers on the You page, where you can delete any of them at any time. Nothing is drawn from a message that suggested crisis, and health conditions, diagnoses and finances are never recorded.",
+  },
+  {
     h: "Your email is never visible to anyone",
     p: "Other people using Astralis see only the name you chose. Your email is not shown in the circle, beside your messages, or anywhere another person can reach, and it is never linked to your name for anyone but you. It is used to send sign-in codes. If you asked for them, it also sends release notes. It is never shared, sold, or used for marketing. Sign-in emails are delivered through Resend, an email provider, which sees the address only to deliver them.",
   },
@@ -49,7 +53,7 @@ const SECTIONS = [
   },
   {
     h: "Talking to other people",
-    p: "You can opt in to a circle of other people using Astralis. If you do, they see only the name you chose. They never see your email, and it is not linked to your name for anyone. Messages between you are stored so they can be delivered when someone is offline. Peer support is not crisis support, and the same safety filter applies to those messages too. You can leave at any time.",
+    p: "You can opt in to a circle of other people using Astralis. If you do, they see only the name you chose. They never see your email, and it is not linked to your name for anyone. Messages between you are stored so they can be delivered when someone is offline. Peer support is not crisis support, and the same safety filter applies to those messages too. You can delete messages you sent, and block anyone. If you report a message, a copy of it is kept for moderation even if it is later deleted. You can leave at any time.",
   },
   {
     h: "Your notes",

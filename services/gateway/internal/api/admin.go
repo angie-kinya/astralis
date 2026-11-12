@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"astralis/gateway/internal/store"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -42,12 +44,23 @@ func (s *Server) requireAdmin() gin.HandlerFunc {
 // GET /api/v1/admin/overview?hours=24
 func (s *Server) handleAdminOverview(c *gin.Context) {
 	hours := boundedInt(c.Query("hours"), 24, 1, 24*30)
-	o, err := s.store.AgentOverview(c.Request.Context(), time.Duration(hours)*time.Hour)
+	ctx := c.Request.Context()
+	o, err := s.store.AgentOverview(ctx, time.Duration(hours)*time.Hour)
 	if err != nil {
 		fail(c, err, "could not load overview")
 		return
 	}
-	c.JSON(http.StatusOK, o)
+	// circle reports sit beside crisis data: both are queues a person must review.
+	// not windowed, an unreviewed report stays on screen until someone looks at it
+	reports, err := s.store.UnreviewedReports(ctx)
+	if err != nil {
+		fail(c, err, "could not load overview")
+		return
+	}
+	c.JSON(http.StatusOK, struct {
+		store.Overview
+		UnreviewedReports int `json:"unreviewedReports"`
+	}{o, reports})
 }
 
 // GET /api/v1/admin/runs?limit=50

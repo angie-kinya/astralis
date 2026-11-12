@@ -70,3 +70,9 @@ export const IconSignOut = (p: { className?: string }) => (
     <path d="M11 12h9M16.5 8.5 20 12l-3.5 3.5" />
   </svg>
 );
+
+export const IconMore = (p: { className?: string }) => (
+  <svg {...base} className={p.className} aria-hidden>
+    <circle cx="6" cy="12" r=".9" /><circle cx="12" cy="12" r=".9" /><circle cx="18" cy="12" r=".9" />
+  </svg>
+);

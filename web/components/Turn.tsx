@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef, useState } from "react";
+
 import CrisisNotice from "@/components/CrisisNotice";
 import Feedback from "@/components/Feedback";
 import SourceList from "@/components/SourceList";
@@ -16,39 +18,52 @@ export type Turn = {
 };
 
 /**
- * The deliberate departure from every other chat UI: nobody gets a bubble.
+ * no speaker labels. in a one-to-one chat the speaker is obvious, and a mono
+ * `astralis ›` reads like a terminal prompt, i.e. a tool. the left border
+ * colour is the only cue: violet for astralis, line for you.
  *
- * Instead each turn is attributed by a mono label — `you ›` / `astralis ›` —
- * and the content sits under it at a reading measure. It reads like a
- * transcript or a log, which is both more honest about what this is and far
- * better suited to replies that are meant to be read slowly rather than
- * skimmed and answered in two seconds.
+ * an assistant reply is rendered as short bursts, one block per paragraph,
+ * all arriving together. assistants answer in slabs; people send bursts. no
+ * fake stagger: the reply is already written, pretending otherwise is theatre.
  */
-export default function TurnView({ turn, handle }: { turn: Turn; handle: string }) {
+export default function TurnView({ turn }: { turn: Turn }) {
+  const [revealed, setRevealed] = useState(false);
+  const press = useRef<ReturnType<typeof setTimeout>>();
+
   if (turn.crisis) return <CrisisNotice text={turn.content} />;
 
-  const mine = turn.role === "user";
-
-  return (
-    <article className={`animate-rise border-l pl-4 sm:pl-5 ${mine ? "border-line" : "border-violet/45"}`}>
-      <p className="mb-2 font-mono text-[.625rem] uppercase tracking-[.14em]">
-        <span className={mine ? "text-ink-3" : "text-violet-2"}>{mine ? handle : "astralis"}</span>
-        <span className="text-ink-3/50"> ›</span>
-      </p>
-
-      {mine ? (
+  if (turn.role === "user") {
+    return (
+      <article className="animate-rise border-l border-line pl-4 sm:pl-5">
         <p className="max-w-reading whitespace-pre-wrap font-sans text-[.9375rem]
                       leading-[1.7] text-ink-2">{turn.content}</p>
-      ) : (
-        <div className="reply max-w-reading">
-          {paragraphs(turn.content).map((p, i) => (
-            <p key={i} className="whitespace-pre-wrap">{renderBold(p)}</p>
-          ))}
+      </article>
+    );
+  }
+
+  // long-press reveals the rating on touch, where there is no hover
+  const touch = {
+    onTouchStart: () => { press.current = setTimeout(() => setRevealed(true), 450); },
+    onTouchEnd:   () => clearTimeout(press.current),
+    onTouchMove:  () => clearTimeout(press.current),
+  };
+
+  return (
+    <article className="group animate-rise space-y-2" {...touch}>
+      {paragraphs(turn.content).map((p, i) => (
+        <div key={i} className="reply max-w-reading border-l border-violet/45 pl-4 sm:pl-5">
+          <p className="whitespace-pre-wrap">{renderBold(p)}</p>
+        </div>
+      ))}
+
+      {!!turn.sources?.length && (
+        <div className="pl-4 sm:pl-5"><SourceList sources={turn.sources} /></div>
+      )}
+      {turn.recommendationId && (
+        <div className="pl-4 sm:pl-5">
+          <Feedback recommendationId={turn.recommendationId} revealed={revealed} />
         </div>
       )}
-
-      {!mine && !!turn.sources?.length && <SourceList sources={turn.sources} />}
-      {!mine && turn.recommendationId && <Feedback recommendationId={turn.recommendationId} />}
     </article>
   );
 }

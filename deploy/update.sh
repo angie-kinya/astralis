@@ -12,6 +12,10 @@ docker compose pull --quiet
 docker compose up -d postgres
 ./migrate.sh                  # schema before code: new code may need new columns
 docker compose up -d --remove-orphans
+# the Caddyfile is a bind mount, so `up` never notices it changed. a reload is
+# graceful (no dropped connections) and a no-op when nothing changed
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 \
+  || echo "warn: caddy reload failed; the old config keeps serving"
 docker image prune -f >/dev/null
 
 # Wait for the API to come back rather than declaring success on faith.

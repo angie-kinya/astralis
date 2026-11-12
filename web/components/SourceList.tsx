@@ -12,22 +12,28 @@ import type { Source } from "@/lib/api";
  * deliberate: this is a research tool, and someone who can see a passage
  * scored 0.41 can tell you the grounding was thin. Hiding it would be
  * flattering the system.
+ *
+ * the server only sends sources a reply actually cited, so a vent with no
+ * citations shows nothing. collapsed it is one small chip, "2 studies", so
+ * a conversation never reads like a literature review.
  */
 export default function SourceList({ sources }: { sources: Source[] }) {
   const [open, setOpen] = useState(false);
   if (!sources.length) return null;
+  // two passages from one paper are one study to the reader
+  const studies = new Set(sources.map((s) => s.url || s.title)).size;
 
   return (
-    <div className="mt-4">
+    <div className="mt-1">
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
-              className="inline-flex items-center gap-2 rounded font-mono text-[.625rem]
-                         uppercase tracking-[.14em] text-ink-3 transition-colors hover:text-ink-2">
+              className="tag inline-flex items-center gap-1.5 text-ink-3 transition-colors
+                         hover:border-violet/50 hover:text-ink-2">
         <svg viewBox="0 0 12 12" aria-hidden
              className={`h-2.5 w-2.5 transition-transform duration-200 ease-swift ${open ? "rotate-90" : ""}`}>
           <path d="M4 2.5 8 6l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.4"
                 strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        grounded in {sources.length} {sources.length === 1 ? "passage" : "passages"}
+        {studies} {studies === 1 ? "study" : "studies"}
       </button>
 
       {open && (

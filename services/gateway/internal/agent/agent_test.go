@@ -8,7 +8,7 @@ import (
 )
 
 func TestDecideFallsBackToPlainRetrievalWhenAnalysisFails(t *testing.T) {
-	p := Decide(Analysis{}, false, "my manager keeps moving deadlines")
+	p := Decide(Analysis{}, false, "my manager keeps moving deadlines", Situation{})
 	require.True(t, p.Retrieve)
 	require.Equal(t, "my manager keeps moving deadlines", p.Query)
 	require.Empty(t, p.Guidance)
@@ -16,21 +16,21 @@ func TestDecideFallsBackToPlainRetrievalWhenAnalysisFails(t *testing.T) {
 
 func TestDecideRoutesOnIntent(t *testing.T) {
 	t.Run("greeting never retrieves", func(t *testing.T) {
-		p := Decide(Analysis{Intent: "greeting", NeedsResearch: true}, true, "hello there")
+		p := Decide(Analysis{Intent: "greeting", NeedsResearch: true}, true, "hello there", Situation{})
 		require.False(t, p.Retrieve)
 		require.NotEmpty(t, p.Guidance)
 	})
 	t.Run("asking for evidence always retrieves, with the rewritten query", func(t *testing.T) {
-		p := Decide(Analysis{Intent: "ask_evidence", SearchQuery: "detachment from work and sleep"}, true, "does that help?")
+		p := Decide(Analysis{Intent: "ask_evidence", SearchQuery: "detachment from work and sleep"}, true, "does that help?", Situation{})
 		require.True(t, p.Retrieve)
 		require.Equal(t, "detachment from work and sleep", p.Query)
 	})
 	t.Run("a short reply without a rewritten query does not retrieve", func(t *testing.T) {
-		p := Decide(Analysis{Intent: "vent", NeedsResearch: true}, true, "yes exactly")
+		p := Decide(Analysis{Intent: "vent", NeedsResearch: true}, true, "yes exactly", Situation{})
 		require.False(t, p.Retrieve)
 	})
 	t.Run("venting retrieves only when research would help", func(t *testing.T) {
-		p := Decide(Analysis{Intent: "vent", NeedsResearch: false}, true, "I am so tired of being ignored in every meeting")
+		p := Decide(Analysis{Intent: "vent", NeedsResearch: false}, true, "I am so tired of being ignored in every meeting", Situation{})
 		require.False(t, p.Retrieve)
 	})
 }

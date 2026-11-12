@@ -1,5 +1,6 @@
 // Command summarise writes episodic memory for conversations that have gone
-// quiet, then exits.
+// quiet, then exits: a short summary and the person_facts drawn from it, both
+// on the analyst model (agent.Memory).
 //
 // It is the queue-free counterpart to cmd/worker: same work, same prompt, same
 // table, but driven by a scheduled run rather than by an enqueued event. Run
@@ -21,10 +22,10 @@ import (
 	"os"
 	"time"
 
+	"astralis/gateway/internal/agent"
 	"astralis/gateway/internal/config"
 	"astralis/gateway/internal/embed"
 	"astralis/gateway/internal/llm"
-	"astralis/gateway/internal/rag"
 	"astralis/gateway/internal/store"
 )
 
@@ -53,9 +54,10 @@ func main() {
 	}
 	defer db.Close()
 
-	engine := rag.NewEngine(db,
+	memory := agent.NewMemory(db,
+		llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ClaudeModel),
 		embed.NewOpenAI(cfg.OpenAIAPIKey, cfg.EmbedModel, cfg.EmbedDim),
-		llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ClaudeModel), 5)
+		cfg.AnalystModel)
 
 	pending, err := db.SessionsNeedingSummary(ctx, *idle, *limit)
 	if err != nil {
@@ -66,7 +68,7 @@ func main() {
 
 	var done, failed int
 	for _, p := range pending {
-		if err := summarise(ctx, db, engine, p); err != nil {
+		if err := memory.Consolidate(ctx, p.SessionID, p.UserID); err != nil {
 			// One bad session must not abort the run. The next scheduled pass
 			// will try it again.
 			slog.Error("summarise", "session_id", p.SessionID, "err", err)
@@ -90,22 +92,4 @@ func main() {
 	if failed > 0 && done == 0 {
 		os.Exit(1)
 	}
-}
-
-func summarise(ctx context.Context, db *store.Store, engine *rag.Engine, p store.PendingSummary) error {
-	msgs, err := db.RecentMessages(ctx, p.SessionID, 50)
-	if err != nil {
-		return err
-	}
-	summary, err := engine.Summarise(ctx, msgs)
-	if err != nil {
-		return err
-	}
-	if err := db.SaveSummary(ctx, p.SessionID, p.UserID, summary); err != nil {
-		return err
-	}
-	// The session id, never the summary. Logs are not a place for the contents
-	// of someone's week.
-	slog.Info("summarised", "session_id", p.SessionID)
-	return nil
 }

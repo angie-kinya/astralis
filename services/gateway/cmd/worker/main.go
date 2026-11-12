@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"os"
 
+	"astralis/gateway/internal/agent"
 	"astralis/gateway/internal/config"
 	"astralis/gateway/internal/embed"
 	"astralis/gateway/internal/llm"
-	"astralis/gateway/internal/rag"
 	"astralis/gateway/internal/store"
 	"astralis/gateway/internal/tasks"
 
@@ -38,12 +38,13 @@ func main() {
 	}
 	defer db.Close()
 
-	engine := rag.NewEngine(db,
+	memory := agent.NewMemory(db,
+		llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ClaudeModel),
 		embed.NewOpenAI(cfg.OpenAIAPIKey, cfg.EmbedModel, cfg.EmbedDim),
-		llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.ClaudeModel), 5)
+		cfg.AnalystModel)
 
 	mux := asynq.NewServeMux()
-	mux.HandleFunc(tasks.TypeSummariseSession, tasks.SummariseHandler(db, engine))
+	mux.HandleFunc(tasks.TypeSummariseSession, tasks.SummariseHandler(memory))
 
 	srv := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: cfg.RedisAddr},

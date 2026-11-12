@@ -8,6 +8,12 @@
 // decisions are deterministic and testable, and a failure in any optional
 // stage degrades the turn instead of breaking it
 //
+// v2 moves behaviour out of the prompt and into Go, and knowledge about the
+// person out of prose and into rows. the prompt says who Astralis is
+// (character.go); code decides how long it speaks and whether it asks
+// (shape.go), what it recalls (person_facts, trajectory), and whether the
+// reply passes (lint.go, with one repair pass)
+//
 // Nothing here trains a model. The agent measures (turn_signals) and records
 // what it did (agent_runs); a separate prediction model can learn from those
 // tables later, in Python, with no change to this package
@@ -20,6 +26,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"astralis/gateway/internal/embed"
 	"astralis/gateway/internal/llm"
@@ -40,6 +48,11 @@ type Config struct {
 	//the floor below which a passage is not relevant enough to put in front of the model:
 	MinSimilarity  float64
 	AnalyseTimeout time.Duration
+	// Repair allows one revision pass when the first draft fails the style
+	// lint. off = log-only mode: violations are still recorded on every run
+	Repair bool
+	// Variants are the voices the bandit chooses between. empty = steady only
+	Variants []string
 }
 
 type Agent struct {
@@ -57,6 +70,17 @@ func New(s *store.Store, e embed.Embedder, m Model, f *safety.Filter, cfg Config
 	if cfg.AnalyseTimeout <= 0 {
 		cfg.AnalyseTimeout = 8 * time.Second
 	}
+	// an unknown name would silently become the base voice; drop it instead
+	known := cfg.Variants[:0:0]
+	for _, v := range cfg.Variants {
+		if _, ok := Variants[v]; ok {
+			known = append(known, v)
+		}
+	}
+	if len(known) == 0 {
+		known = []string{DefaultVariant}
+	}
+	cfg.Variants = known
 	return &Agent{store: s, embedder: e, model: m, filter: f, cfg: cfg}
 }
 
@@ -65,6 +89,9 @@ type Turn struct {
 	UserID    string
 	SessionID string
 	Content   string
+	// Progress receives truthful status lines ("reading 2 studies") while the
+	// turn runs. called synchronously, so it must not block; nil is fine
+	Progress func(status string)
 }
 
 type Result struct {
@@ -116,25 +143,78 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 		return a.crisis(ctx, t, userMsgID, verdict, &run), nil
 	}
 
-	// REMEMBER. the recent window of this session, and the gist of earlier ones
+	// REMEMBER. the recent window of this session is one fast query, and
+	// everything after it reads independently
 	t0 = time.Now()
 	history, err := a.store.RecentMessages(ctx, t.SessionID, 12)
 	if err != nil {
 		note("memory", err)
 		return Result{}, fmt.Errorf("load history: %w", err)
 	}
-	summaries, err := a.store.RecentSummaries(ctx, t.UserID, 3)
-	if err != nil {
-		note("memory", err) // continuity is nice to have, not a reason to fail
-	}
-	stage("memory", t0)
+	stage("history", t0)
 
-	// ANALYSE. bounded by its own timeout; failure means "no analysis"
+	// ANALYSE + RECALL, in parallel. each goroutine writes only its own
+	// variables, so there is no shared write and no mutex. optional reads
+	// swallow their own errors, so one failure never cancels the others, and
+	// pre-reply latency is the slowest read rather than the sum of them
+	var (
+		an         Analysis
+		usage      llm.Usage
+		aerr       error
+		qvec       []float32
+		facts      []store.Fact
+		pattern    store.Pattern
+		moved      map[string]bool
+		summaries  []string
+		variant    string
+		msAnalyse  int64
+		msRecall   int64
+		recallErr  error
+		patternErr error
+		summaryErr error
+	)
 	t0 = time.Now()
-	actx, cancel := context.WithTimeout(ctx, a.cfg.AnalyseTimeout)
-	an, usage, aerr := a.analyse(actx, tail(history, 6))
-	cancel()
-	stage("analyse", t0)
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { // analyse, bounded by its own timeout; failure means "no analysis"
+		s := time.Now()
+		actx, cancel := context.WithTimeout(gctx, a.cfg.AnalyseTimeout)
+		defer cancel()
+		an, usage, aerr = a.analyse(actx, tail(history, 6))
+		msAnalyse = time.Since(s).Milliseconds()
+		return nil
+	})
+	g.Go(func() error { // embed once, recall facts; the vector is reused for research
+		s := time.Now()
+		defer func() { msRecall = time.Since(s).Milliseconds() }()
+		v, err := a.embedder.Embed(gctx, []string{t.Content})
+		if err != nil || len(v) == 0 || len(v[0]) == 0 {
+			recallErr = errors.Join(err, errors.New("no vector"))
+			return nil
+		}
+		qvec = v[0]
+		facts, recallErr = a.store.RecallFacts(gctx, t.UserID, qvec, 4, 0.30)
+		return nil
+	})
+	g.Go(func() error {
+		pattern, patternErr = a.store.Pattern(gctx, t.UserID)
+		if patternErr == nil {
+			moved, patternErr = a.store.SessionMoves(gctx, t.SessionID)
+		}
+		return nil
+	})
+	g.Go(func() error {
+		summaries, summaryErr = a.store.RecentSummaries(gctx, t.UserID, 2)
+		return nil
+	})
+	g.Go(func() error { variant = a.variant(gctx, t.SessionID); return nil })
+	_ = g.Wait()
+	stage("gather", t0)
+	run.StagesMS["analyse"], run.StagesMS["recall"] = msAnalyse, msRecall
+	for name, err := range map[string]error{"recall": recallErr, "pattern": patternErr, "memory": summaryErr} {
+		if err != nil {
+			note(name, err) // continuity is nice to have, not a reason to fail
+		}
+	}
 	run.InputTokens += usage.InputTokens
 	run.OutputTokens += usage.OutputTokens
 	if aerr != nil {
@@ -142,21 +222,44 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 	} else {
 		run.AnalyserOK, run.Intent = true, an.Intent
 	}
+	run.PromptVariant, run.FactsUsed = variant, len(facts)
+	if len(facts) > 0 {
+		progress(t, "checking what you told me before")
+	}
 
 	// PLAN. pure Go
-	plan := Decide(an, aerr == nil, t.Content)
+	prev := assistantReplies(history)
+	plan := Decide(an, aerr == nil, t.Content, Situation{
+		LastAsked: len(prev) > 0 && askedQuestion(prev[len(prev)-1]),
+		Pattern:   pattern,
+		Moved:     moved,
+		Variant:   variant,
+	})
+	run.Moves = plan.Moves
 
 	// ACT. only the tools the plan asked for
 	var chunks []store.Chunk
 	if plan.Retrieve {
 		t0 = time.Now()
 		run.RetrievalUsed = true
-		if chunks, err = a.retrieve(ctx, plan.Query); err != nil {
+		vec := qvec
+		if plan.Query != t.Content || len(vec) == 0 {
+			vec = nil // the analyser rewrote the query, so it needs its own vector
+		}
+		if chunks, err = a.retrieve(ctx, plan.Query, vec); err != nil {
 			note("retrieve", err) // answer ungrounded rather than not at all
 		}
 		stage("retrieve", t0)
+		switch n := len(chunks); {
+		case n == 1:
+			progress(t, "reading a study")
+		case n > 1:
+			progress(t, fmt.Sprintf("reading %d studies", n))
+		}
 	}
+	plan.Shape.Cite = plan.Shape.Cite && len(chunks) > 0
 	run.ChunksFound = len(chunks)
+	run.WordBudget = plan.Shape.Words
 	for i, c := range chunks {
 		if i == 0 || c.Similarity > *run.TopSimilarity {
 			sim := c.Similarity
@@ -166,26 +269,35 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 
 	// RESPOND
 	t0 = time.Now()
-	res, err := a.model.Generate(ctx, llm.Request{
-		System:    buildSystem(summaries, chunks, plan),
-		Messages:  conversation(history, t.Content),
-		MaxTokens: 2048,
-		Effort:    a.cfg.RespondEffort,
-	})
+	system := buildSystem(variant, summaries, facts, chunks, plan)
+	msgs := conversation(history, t.Content)
+	draft, err := a.respond(ctx, system, msgs, plan.Shape, &run)
 	stage("respond", t0)
-	run.InputTokens += res.Usage.InputTokens
-	run.OutputTokens += res.Usage.OutputTokens
-	run.StopReason = res.StopReason
-	if err == nil && strings.TrimSpace(res.Text) == "" {
-		err = fmt.Errorf("empty reply (stop_reason=%s)", res.StopReason)
-	}
 	if err != nil {
 		note("respond", err)
 		return Result{}, fmt.Errorf("generate reply: %w", err)
 	}
 
-	// VERIFY. keep only citations that point at something real
-	text, cited := renumberCitations(res.Text, len(chunks))
+	// VERIFY. the style lint first, with one repair pass at most: a second
+	// failure ships with its violations logged, which is what evals are for
+	run.StyleViolations = Lint(draft, plan.Shape, prev)
+	if len(run.StyleViolations) > 0 && a.cfg.Repair {
+		t0 = time.Now()
+		revised, rerr := a.respond(ctx, system+repairNote(run.StyleViolations, draft), msgs, plan.Shape, &run)
+		stage("repair", t0)
+		if rerr != nil {
+			note("repair", rerr) // the first draft still stands
+		} else if len(Lint(revised, plan.Shape, prev)) < len(run.StyleViolations) {
+			draft, run.Repaired = revised, true
+		}
+	}
+	// then citations: keep only markers that point at something real. when
+	// the shape forbids citing, every marker goes, whatever the model wrote
+	available := len(chunks)
+	if !plan.Shape.Cite {
+		available = 0
+	}
+	text, cited := renumberCitations(draft, available)
 	sources := make([]store.Chunk, 0, len(cited))
 	citedIDs := make([]string, 0, len(cited))
 	for _, k := range cited {
@@ -193,6 +305,7 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 		citedIDs = append(citedIDs, chunks[k-1].ID)
 	}
 	run.ChunksCited = len(cited)
+	run.ReplyWords = len(strings.Fields(text))
 
 	// RECORD
 	t0 = time.Now()
@@ -208,7 +321,7 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 	for i, c := range chunks {
 		allIDs[i] = c.ID
 	}
-	recID, err := a.store.SaveRecommendation(ctx, t.SessionID, replyID, allIDs, citedIDs)
+	recID, err := a.store.SaveRecommendation(ctx, t.SessionID, replyID, variant, allIDs, citedIDs)
 	if err != nil {
 		note("record", err)
 	}
@@ -216,6 +329,9 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 		if err := a.store.SaveSignals(ctx, toSignals(an, t, userMsgID)); err != nil {
 			note("record", err)
 		}
+	}
+	if err := a.store.RecordMoves(ctx, t.SessionID, plan.Moves); err != nil {
+		note("record", err)
 	}
 	_ = a.store.IncrementRetrieved(ctx, allIDs)
 	_ = a.store.TouchSession(ctx, t.SessionID)
@@ -226,6 +342,62 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 	stage("record", t0)
 
 	return Result{Reply: text, RecommendationID: recID, Sources: sources}, nil
+}
+
+// respond makes one reply call within the shape's token budget and adds its
+// usage to the run. an empty reply is an error, not a reply
+func (a *Agent) respond(ctx context.Context, system string, msgs []llm.Message, sh Shape, run *store.Run) (string, error) {
+	res, err := a.model.Generate(ctx, llm.Request{
+		System:    system,
+		Messages:  msgs,
+		MaxTokens: sh.MaxTokens(),
+		Effort:    a.cfg.RespondEffort,
+	})
+	run.InputTokens += res.Usage.InputTokens
+	run.OutputTokens += res.Usage.OutputTokens
+	run.StopReason = res.StopReason
+	if err == nil && strings.TrimSpace(res.Text) == "" {
+		err = fmt.Errorf("empty reply (stop_reason=%s)", res.StopReason)
+	}
+	return strings.TrimSpace(res.Text), err
+}
+
+// variant returns the session's voice, choosing one by thompson sampling on
+// its first turn. any failure falls back to the base voice, never an error
+func (a *Agent) variant(ctx context.Context, sessionID string) string {
+	if len(a.cfg.Variants) == 1 {
+		return a.cfg.Variants[0]
+	}
+	if v, err := a.store.SessionVariant(ctx, sessionID); err == nil && v != "" {
+		return v
+	}
+	stats, err := a.store.VariantStats(ctx)
+	if err != nil {
+		stats = nil // explore uniformly
+	}
+	v, err := a.store.ClaimSessionVariant(ctx, sessionID, PickVariant(stats, a.cfg.Variants, minRatingsEach))
+	if err != nil || v == "" {
+		return DefaultVariant
+	}
+	return v
+}
+
+// progress is nil-safe: a turn without a listener just runs
+func progress(t Turn, status string) {
+	if t.Progress != nil {
+		t.Progress(status)
+	}
+}
+
+// assistantReplies are the earlier replies in the window, oldest first
+func assistantReplies(history []store.Message) []string {
+	var out []string
+	for _, m := range history {
+		if m.Role == "assistant" {
+			out = append(out, m.Content)
+		}
+	}
+	return out
 }
 
 // crisis answers with fixed, human written text. the model is never called,
@@ -244,15 +416,20 @@ func (a *Agent) crisis(ctx context.Context, t Turn, msgID string, v safety.Resul
 	return Result{Reply: safety.CrisisResponse, Crisis: true, Sources: []store.Chunk{}}
 }
 
-func (a *Agent) retrieve(ctx context.Context, query string) ([]store.Chunk, error) {
-	vecs, err := a.embedder.Embed(ctx, []string{query})
-	if err != nil {
-		return nil, err
+// retrieve searches the research library. vec is the message's vector when
+// the query is the raw message, so the embedder is called once, not twice
+func (a *Agent) retrieve(ctx context.Context, query string, vec []float32) ([]store.Chunk, error) {
+	if len(vec) == 0 {
+		vecs, err := a.embedder.Embed(ctx, []string{query})
+		if err != nil {
+			return nil, err
+		}
+		if len(vecs) == 0 || len(vecs[0]) == 0 {
+			return nil, errors.New("embedder returned no vector")
+		}
+		vec = vecs[0]
 	}
-	if len(vecs) == 0 || len(vecs[0]) == 0 {
-		return nil, errors.New("embedder returned no vector")
-	}
-	return a.store.SearchChunks(ctx, vecs[0], a.cfg.TopK, a.cfg.MinSimilarity)
+	return a.store.SearchChunks(ctx, vec, a.cfg.TopK, a.cfg.MinSimilarity)
 }
 
 // conversation turns stored history into model messages. the handler has

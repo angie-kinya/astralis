@@ -35,3 +35,7 @@ web/next-env.d.ts
 
 requests.http
 .vscode
+
+# evals: run files are regenerated per commit; results.csv is the tracked history
+services/evals/runs/*.jsonl
+services/evals/judged/*.json

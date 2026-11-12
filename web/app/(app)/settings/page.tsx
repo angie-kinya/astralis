@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useMe } from "@/components/AppGate";
 import Butterfly from "@/components/Butterflies";
+import Remembers from "@/components/Remembers";
 import { ApiError, api, signOut, userMessage } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 
@@ -13,8 +14,9 @@ import { dateTime } from "@/lib/format";
  * Deliberately not buried behind three menus. Kenya's Data Protection Act 2019
  * gives data subjects a right to erasure, and a right nobody can find is not a
  * right. Type-to-confirm exists because deletion is genuinely irreversible:
- * ON DELETE CASCADE takes sessions, messages, summaries, ratings, notes, peer
- * messages, sign-in sessions and crisis flags with the user row.
+ * ON DELETE CASCADE takes sessions, messages, summaries, remembered facts,
+ * ratings, notes, peer messages, blocks, reports, sign-in sessions and crisis
+ * flags with the user row.
  */
 export default function SettingsPage() {
   const { me, setMe } = useMe();
@@ -118,9 +120,9 @@ export default function SettingsPage() {
             ["Email", "To sign you in, and release notes if you asked. Visible only to you"],
             ["Consent", me.consentedAt ? `Given ${dateTime(me.consentedAt)}` : "Not given"],
             ["Conversations", "Every message to Astralis and every reply"],
-            ["Memory", "One short factual note per session, used as context"],
+            ["Memory", "One short note per session, and the facts listed below, used as context"],
             ["Ratings", "Your helpful / not-helpful marks, which reweight retrieval"],
-            ["Circle", "Messages between you and other people here"],
+            ["Circle", "Messages between you and other people here, and a copy of any message you report"],
             ["Notes", "Your notepad. Never read by any model"],
           ].map(([k, v]) => (
             <div key={k} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-5">
@@ -129,6 +131,9 @@ export default function SettingsPage() {
             </div>
           ))}
         </dl>
+
+        {/* --------------------------------------------------------- memory */}
+        <Remembers />
 
         {/* -------------------------------------------------------- erasure */}
         <section className="care mt-6 rounded-xl border border-amber/30 bg-amber/[.05] p-5">

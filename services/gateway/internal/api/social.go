@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"astralis/gateway/internal/realtime"
 	"astralis/gateway/internal/safety"
 	"astralis/gateway/internal/store"
 
@@ -85,9 +86,12 @@ func (s *Server) handleListPeers(c *gin.Context) {
 }
 
 func (s *Server) handleGetConversation(c *gin.Context) {
+	peerID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	me := currentUser(c).ID
-	peerID := c.Param("id")
 
 	msgs, err := s.store.Conversation(ctx, me, peerID, 200)
 	if err != nil {
@@ -96,8 +100,10 @@ func (s *Server) handleGetConversation(c *gin.Context) {
 	}
 	// Opening a thread marks it read. Best-effort: a failed read receipt is
 	// not worth failing the request the person actually made.
-	if err := s.store.MarkConversationRead(ctx, me, peerID); err != nil {
+	if n, err := s.store.MarkConversationRead(ctx, me, peerID); err != nil {
 		slog.Error("mark read", "err", err)
+	} else if n > 0 {
+		s.publish(realtime.Event{Type: realtime.MessageRead, Data: gin.H{"peerId": me}}, peerID)
 	}
 	c.JSON(http.StatusOK, gin.H{"messages": msgs})
 }
@@ -119,14 +125,17 @@ func (s *Server) handleSendPeerMessage(c *gin.Context) {
 		return
 	}
 
+	peerID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	me := currentUser(c).ID
-	peerID := c.Param("id")
 	body := strings.TrimSpace(req.Body)
 
 	verdict := s.filter.Check(ctx, body)
 
-	id, err := s.store.SendPeerMessage(ctx, me, peerID, body, verdict.IsCrisis())
+	msg, err := s.store.SendPeerMessage(ctx, me, peerID, body, verdict.IsCrisis())
 	if errors.Is(err, store.ErrPeerUnavailable) {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   "peer_unavailable",
@@ -140,7 +149,7 @@ func (s *Server) handleSendPeerMessage(c *gin.Context) {
 	}
 
 	if verdict.IsCrisis() {
-		if err := s.store.FlagPeerCrisis(ctx, id, verdict.MatchedRule, verdict.Score); err != nil {
+		if err := s.store.FlagPeerCrisis(ctx, msg.ID, verdict.MatchedRule, verdict.Score); err != nil {
 			slog.Error("flag peer crisis", "err", err)
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -150,7 +159,99 @@ func (s *Server) handleSendPeerMessage(c *gin.Context) {
 		})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": id, "delivered": true, "crisis": false})
+	// delivered: the recipient's tabs and the sender's other tabs see it now,
+	// each from their own side of the thread. flagged messages never get here
+	s.publish(realtime.Event{Type: realtime.MessageNew, Data: gin.H{"peerId": peerID, "message": msg}}, me)
+	theirs := msg
+	theirs.Mine = false
+	s.publish(realtime.Event{Type: realtime.MessageNew, Data: gin.H{"peerId": me, "message": theirs}}, peerID)
+
+	c.JSON(http.StatusCreated, gin.H{"id": msg.ID, "delivered": true, "crisis": false, "message": msg})
+}
+
+// handleDeletePeerMessage tombstones one of the caller's own messages
+func (s *Server) handleDeletePeerMessage(c *gin.Context) {
+	if _, ok := idParam(c, "id"); !ok {
+		return
+	}
+	msgID, ok := idParam(c, "msgId")
+	if !ok {
+		return
+	}
+	me := currentUser(c).ID
+	// the store scopes by sender, so the :id in the path is never trusted for access
+	peerID, err := s.store.DeletePeerMessage(c.Request.Context(), me, msgID)
+	if errors.Is(err, store.ErrNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "message not found"})
+		return
+	}
+	if err != nil {
+		fail(c, err, "could not delete that message")
+		return
+	}
+	s.publish(realtime.Event{Type: realtime.MessageDeleted, Data: gin.H{"peerId": peerID, "messageId": msgID}}, me)
+	s.publish(realtime.Event{Type: realtime.MessageDeleted, Data: gin.H{"peerId": me, "messageId": msgID}}, peerID)
+	c.Status(http.StatusNoContent)
+}
+
+// handleBlockPeer is silent on purpose: nothing is published to the blocked
+// person. to them it reads as someone who stopped accepting messages
+func (s *Server) handleBlockPeer(c *gin.Context) {
+	peerID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	err := s.store.BlockPeer(c.Request.Context(), currentUser(c).ID, peerID)
+	if errors.Is(err, store.ErrNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "person not found"})
+		return
+	}
+	if err != nil {
+		fail(c, err, "could not block that person")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (s *Server) handleUnblockPeer(c *gin.Context) {
+	peerID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	if err := s.store.UnblockPeer(c.Request.Context(), currentUser(c).ID, peerID); err != nil {
+		fail(c, err, "could not unblock that person")
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+type reportReq struct {
+	MessageID string `json:"messageId" binding:"omitempty,uuid"`
+	Reason    string `json:"reason" binding:"required,oneof=harassment spam unsafe other"`
+}
+
+// handleReportPeer files a report for review. the snapshot is copied by the
+// store from the message itself; the client only names which one
+func (s *Server) handleReportPeer(c *gin.Context) {
+	peerID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var req reportReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid report"})
+		return
+	}
+	err := s.store.ReportPeer(c.Request.Context(), currentUser(c).ID, peerID, req.MessageID, req.Reason)
+	if errors.Is(err, store.ErrNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "nothing to report"})
+		return
+	}
+	if err != nil {
+		fail(c, err, "could not send that report")
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (s *Server) handleUnread(c *gin.Context) {

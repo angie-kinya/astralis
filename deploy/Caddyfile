@@ -20,7 +20,11 @@
 	# is not cut off by a proxy timeout in the middle of the chain.
 	@api path /api/* /healthz
 	handle @api {
-		reverse_proxy api:8080
+		# flush_interval -1 writes each response chunk as it arrives. without it
+		# Caddy buffers /api/v1/events and live circle messages never show up
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
 	}
 
 	handle {

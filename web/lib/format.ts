@@ -44,8 +44,25 @@ export function relative(iso: string): string {
   const hrs = Math.round(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
-  return days < 7 ? `${days}d ago` : "a while ago";
+  // past a week the date itself is more useful than a vaguer phrase
+  return days < 7 ? `${days}d ago` : dayLabel(iso);
 }
+
+/** "Today", "Yesterday", "Monday", "3 November", "3 November 2025" */
+export function dayLabel(iso: string): string {
+  const d = new Date(iso), now = new Date();
+  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((start(now) - start(d)) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return d.toLocaleDateString("en-GB", { weekday: "long" });
+  return d.toLocaleDateString("en-GB", d.getFullYear() === now.getFullYear()
+    ? { day: "numeric", month: "long" }
+    : { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** a local calendar day, for deciding where a day separator goes */
+export const dayKey = (iso: string) => new Date(iso).toDateString();
 
 /** Relative time in words, for headlines: "just now", "3 hours ago", "2 days ago". */
 export function timeAgo(iso: string): string {

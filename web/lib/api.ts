@@ -111,7 +111,9 @@ export type Peer = {
 export type PeerMessage = {
   id: string;
   mine: boolean;
-  body: string;
+  /** null once deleted: the row stays as a tombstone so the thread still reads */
+  body: string | null;
+  deleted: boolean;
   createdAt: string;
   readAt: string | null;
 };
@@ -159,3 +161,33 @@ export type LatestItem = {
   summary: string;
   url: string;
 };
+
+/** one row of person_facts: something they mentioned that astralis keeps, visible and deletable in settings */
+export type Fact = {
+  id: string;
+  kind: "person" | "event" | "commitment" | "helped" | "context" | string;
+  subject: string;
+  detail: string;
+  status: "open" | "done" | "dropped" | string;
+  mentions: number;
+  firstSeen: string;
+  lastSeen: string;
+};
+
+export type ReportReason = "harassment" | "spam" | "unsafe" | "other";
+
+// ---------------------------------------------------------------- calls
+// thin wrappers, so a route change touches one line and callers stay typed
+
+export const listFacts   = () => api<{ facts: Fact[] }>("/me/facts");
+export const deleteFact  = (id: string) => api<void>(`/me/facts/${id}`, { method: "DELETE" });
+export const lastTime    = () => api<{ fact: Fact | null }>("/me/last-time");
+export const rateSession = (id: string, worth: boolean) =>
+  api<void>(`/sessions/${id}/rating`, { method: "POST", body: JSON.stringify({ worth }) });
+
+export const deletePeerMessage = (peerId: string, msgId: string) =>
+  api<void>(`/peers/${peerId}/messages/${msgId}`, { method: "DELETE" });
+export const blockPeer   = (peerId: string) => api<void>(`/peers/${peerId}/block`, { method: "POST" });
+export const unblockPeer = (peerId: string) => api<void>(`/peers/${peerId}/block`, { method: "DELETE" });
+export const reportPeer  = (peerId: string, reason: ReportReason, messageId?: string) =>
+  api<void>(`/peers/${peerId}/report`, { method: "POST", body: JSON.stringify({ reason, messageId }) });

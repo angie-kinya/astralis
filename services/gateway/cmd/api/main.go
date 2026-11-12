@@ -16,6 +16,7 @@ import (
 	"astralis/gateway/internal/embed"
 	"astralis/gateway/internal/llm"
 	"astralis/gateway/internal/mail"
+	"astralis/gateway/internal/realtime"
 	"astralis/gateway/internal/safety"
 	"astralis/gateway/internal/store"
 
@@ -56,6 +57,8 @@ func main() {
 		AnalystModel:  cfg.AnalystModel,
 		RespondEffort: cfg.RespondEffort,
 		MinSimilarity: cfg.MinSimilarity,
+		Repair:        cfg.AgentRepair,
+		Variants:      cfg.AgentVariants,
 	})
 
 	// The queue is optional. On a single droplet there is no Redis, and
@@ -74,11 +77,18 @@ func main() {
 	}
 	slog.Info("mail", "provider", map[bool]string{true: "resend", false: "log (dev only)"}[cfg.ResendAPIKey != ""])
 
+	// in-memory pub/sub for GET /api/v1/events; one process is enough on one droplet
+	hub := realtime.NewHub()
+
+	// no WriteTimeout, deliberately: it would cut every long-lived event stream.
+	// slow-client protection comes from ReadHeaderTimeout and Caddy in front
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           api.NewServer(cfg, db, brain, filter, queue, mailer).Router(),
+		Handler:           api.NewServer(cfg, db, brain, filter, queue, mailer, hub).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	// streams never end on their own; this lets Shutdown finish without waiting them out
+	srv.RegisterOnShutdown(hub.Close)
 
 	go func() {
 		slog.Info("api listening", "port", cfg.Port, "env", cfg.Env)

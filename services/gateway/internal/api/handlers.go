@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"astralis/gateway/internal/agent"
+	"astralis/gateway/internal/realtime"
 	"astralis/gateway/internal/store"
 	"astralis/gateway/internal/tasks"
 
@@ -21,8 +22,10 @@ import (
 // the new terms go live. That is the whole procedure — no version label, and
 // every past consent keeps its real timestamp for the record.
 //
-// Current terms: the agent records structured observations about each message.
-var TermsUpdatedAt = time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)
+// Current terms: the agent records structured observations about each message,
+// keeps a list of facts about the person (person_facts, deletable in settings),
+// and a circle report keeps a snapshot of the reported message for moderation.
+var TermsUpdatedAt = time.Date(2026, time.November, 10, 0, 0, 0, 0, time.UTC)
 
 func (s *Server) handleMe(c *gin.Context) {
 	u := currentUser(c)
@@ -116,10 +119,17 @@ func (s *Server) handleSendMessage(c *gin.Context) {
 		return
 	}
 
+	userID, sessionID := currentUser(c).ID, c.Param("id")
 	res, err := s.agent.Handle(c.Request.Context(), agent.Turn{
-		UserID:    currentUser(c).ID,
-		SessionID: c.Param("id"),
+		UserID:    userID,
+		SessionID: sessionID,
 		Content:   strings.TrimSpace(req.Content),
+		// truthful status lines reach the tab over SSE in place of a skeleton.
+		// Publish never blocks, so the agent is never slowed by a slow tab
+		Progress: func(status string) {
+			s.publish(realtime.Event{Type: realtime.TurnStatus,
+				Data: gin.H{"sessionId": sessionID, "status": status}}, userID)
+		},
 	})
 	if err != nil {
 		fail(c, err, "could not generate a reply")
@@ -155,6 +165,35 @@ func (s *Server) handleEndSession(c *gin.Context) {
 		slog.Error("enqueue summarise", "err", err)
 	}
 	c.JSON(http.StatusAccepted, gin.H{"queued": true})
+}
+
+type rateSessionReq struct {
+	// pointer so that false is distinguishable from "field absent"
+	Worth *bool `json:"worth" binding:"required"`
+}
+
+// handleRateSession records the end-of-session card. one deliberate rating per
+// conversation; it also credits the session's voice variant in the bandit
+func (s *Server) handleRateSession(c *gin.Context) {
+	sessionID, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var req rateSessionReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rating"})
+		return
+	}
+	err := s.store.RateSession(c.Request.Context(), currentUser(c).ID, sessionID, *req.Worth)
+	if errors.Is(err, store.ErrNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		return
+	}
+	if err != nil {
+		fail(c, err, "could not save that rating")
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 type feedbackReq struct {

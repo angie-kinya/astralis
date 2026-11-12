@@ -2,10 +2,50 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   IconAstralis, IconCircle, IconNotes, IconPractice, IconYou,
 } from "@/components/icons";
+import { api } from "@/lib/api";
+import { useEvent, useEventsConnected } from "@/lib/events";
+
+/** fired by Circle after it opens a thread, since reading marks messages read */
+export const UNREAD_CHANGED = "astralis:unread-changed";
+
+/**
+ * The unread count, pushed rather than polled. Any peer event (or Circle
+ * opening a thread) refetches the one cheap count, so the badge is always the
+ * server's number and never drifts from local arithmetic. A 60 s poll covers
+ * the moments the stream is down.
+ */
+function useUnread(): number {
+  const [unread, setUnread] = useState(0);
+  const live = useEventsConnected();
+
+  const refetch = useCallback(async () => {
+    try { setUnread((await api<{ unread: number }>("/peers/unread")).unread); }
+    catch { /* transient; the next event or tick retries */ }
+  }, []);
+
+  useEvent("message.new", () => void refetch());
+  useEvent("message.deleted", () => void refetch());
+
+  useEffect(() => {
+    void refetch();
+    const on = () => void refetch();
+    window.addEventListener(UNREAD_CHANGED, on);
+    return () => window.removeEventListener(UNREAD_CHANGED, on);
+  }, [refetch]);
+
+  useEffect(() => {
+    if (live) return;
+    const id = setInterval(() => void refetch(), 60_000);
+    return () => clearInterval(id);
+  }, [live, refetch]);
+
+  return unread;
+}
 
 const NAV = [
   { href: "/chat",      label: "Astralis",  Icon: IconAstralis },
@@ -23,8 +63,9 @@ const NAV = [
  * `unread` is surfaced here rather than inside Circle because the whole point
  * of a badge is to be visible from somewhere else.
  */
-export default function Rail({ unread }: { unread: number }) {
+export default function Rail() {
   const path = usePathname();
+  const unread = useUnread();
 
   return (
     <nav

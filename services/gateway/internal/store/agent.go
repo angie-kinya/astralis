@@ -60,6 +60,15 @@ type Run struct {
 	StagesMS       map[string]int64
 	TotalMS        int64
 	Error          string
+
+	// v2: the voice, the shape it was asked for and whether it held
+	PromptVariant   string
+	WordBudget      int
+	ReplyWords      int
+	StyleViolations []string // first-pass lint, kept even when the repair fixed them
+	Repaired        bool     // the revised draft is the one that shipped
+	FactsUsed       int
+	Moves           []string
 }
 
 func (s *Store) SaveRun(ctx context.Context, r Run) error {
@@ -67,15 +76,25 @@ func (s *Store) SaveRun(ctx context.Context, r Run) error {
 	if err != nil {
 		return err
 	}
+	if r.StyleViolations == nil {
+		r.StyleViolations = []string{}
+	}
+	if r.Moves == nil {
+		r.Moves = []string{}
+	}
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO agent_runs (user_id, session_id, user_message_id, reply_message_id, route,
 			intent, safety_rule, analyser_ok, retrieval_used, chunks_found, chunks_cited,
-			top_similarity, input_tokens, output_tokens, stop_reason, stages_ms, total_ms, error)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18)`,
+			top_similarity, input_tokens, output_tokens, stop_reason, stages_ms, total_ms, error,
+			prompt_variant, word_budget, reply_words, style_violations, repaired, facts_used, moves)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,
+			$19,$20,$21,$22,$23,$24,$25)`,
 		r.UserID, r.SessionID, nullIfEmpty(r.UserMessageID), nullIfEmpty(r.ReplyMessageID), r.Route,
 		nullIfEmpty(r.Intent), nullIfEmpty(r.SafetyRule), r.AnalyserOK, r.RetrievalUsed,
 		r.ChunksFound, r.ChunksCited, r.TopSimilarity, r.InputTokens, r.OutputTokens,
-		nullIfEmpty(r.StopReason), string(stages), r.TotalMS, nullIfEmpty(r.Error))
+		nullIfEmpty(r.StopReason), string(stages), r.TotalMS, nullIfEmpty(r.Error),
+		nullIfEmpty(r.PromptVariant), nullIfZero(r.WordBudget), nullIfZero(r.ReplyWords),
+		r.StyleViolations, r.Repaired, r.FactsUsed, r.Moves)
 	return err
 }
 
@@ -121,8 +140,13 @@ type Overview struct {
 	OutputTokens     int64    `json:"outputTokens"`
 	AvgTopSimilarity *float64 `json:"avgTopSimilarity"`
 	ActiveUsers      int      `json:"activeUsers"`
-	LastError        *string  `json:"lastError"`
-	LastErrorAt      *string  `json:"lastErrorAt"`
+	// v2 voice health: how often the first draft broke a style rule, how
+	// often the repair shipped, and how often recall had something to offer
+	StyleViolationRate float64 `json:"styleViolationRate"`
+	RepairedRate       float64 `json:"repairedRate"`
+	FactsUsedRate      float64 `json:"factsUsedRate"`
+	LastError          *string `json:"lastError"`
+	LastErrorAt        *string `json:"lastErrorAt"`
 }
 
 func (s *Store) AgentOverview(ctx context.Context, window time.Duration) (Overview, error) {
@@ -140,11 +164,15 @@ func (s *Store) AgentOverview(ctx context.Context, window time.Duration) (Overvi
 		       percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) FILTER (WHERE route='agent'),
 		       COALESCE(sum(input_tokens), 0), COALESCE(sum(output_tokens), 0),
 		       avg(top_similarity)::float8,
-		       count(DISTINCT user_id)
+		       count(DISTINCT user_id),
+		       COALESCE(avg((cardinality(style_violations) > 0)::int) FILTER (WHERE route='agent'), 0)::float8,
+		       COALESCE(avg(repaired::int) FILTER (WHERE route='agent'), 0)::float8,
+		       COALESCE(avg((facts_used > 0)::int) FILTER (WHERE route='agent'), 0)::float8
 		FROM agent_runs WHERE created_at > now() - $1::interval`, window).Scan(
 		&o.Turns, &o.CrisisTurns, &o.FailedTurns, &o.AnalyserFailures, &o.ClassifierDown,
 		&o.RetrievalRate, &o.CitationRate, &o.TruncatedReplies, &o.P50MS, &o.P95MS,
-		&o.InputTokens, &o.OutputTokens, &o.AvgTopSimilarity, &o.ActiveUsers)
+		&o.InputTokens, &o.OutputTokens, &o.AvgTopSimilarity, &o.ActiveUsers,
+		&o.StyleViolationRate, &o.RepairedRate, &o.FactsUsedRate)
 	if err != nil {
 		return o, err
 	}
@@ -178,13 +206,22 @@ type RunRow struct {
 	TotalMS       int              `json:"totalMs"`
 	Error         *string          `json:"error"`
 	CreatedAt     time.Time        `json:"createdAt"`
+
+	PromptVariant   *string  `json:"promptVariant"`
+	WordBudget      *int     `json:"wordBudget"`
+	ReplyWords      *int     `json:"replyWords"`
+	StyleViolations []string `json:"styleViolations"`
+	Repaired        bool     `json:"repaired"`
+	FactsUsed       int      `json:"factsUsed"`
+	Moves           []string `json:"moves"`
 }
 
 func (s *Store) RecentRuns(ctx context.Context, limit int) ([]RunRow, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, route, intent, safety_rule, analyser_ok, retrieval_used, chunks_found,
 		       chunks_cited, top_similarity, input_tokens, output_tokens, stop_reason,
-		       stages_ms, total_ms, error, created_at
+		       stages_ms, total_ms, error, created_at,
+		       prompt_variant, word_budget, reply_words, style_violations, repaired, facts_used, moves
 		FROM agent_runs ORDER BY created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
@@ -198,13 +235,139 @@ func (s *Store) RecentRuns(ctx context.Context, limit int) ([]RunRow, error) {
 		if err := rows.Scan(&r.ID, &r.Route, &r.Intent, &r.SafetyRule, &r.AnalyserOK,
 			&r.RetrievalUsed, &r.ChunksFound, &r.ChunksCited, &r.TopSimilarity,
 			&r.InputTokens, &r.OutputTokens, &r.StopReason, &stages, &r.TotalMS,
-			&r.Error, &r.CreatedAt); err != nil {
+			&r.Error, &r.CreatedAt, &r.PromptVariant, &r.WordBudget, &r.ReplyWords,
+			&r.StyleViolations, &r.Repaired, &r.FactsUsed, &r.Moves); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(stages, &r.StagesMS)
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// v2: trajectory, noticing moves, variants
+
+// Pattern is the trajectory of the last 21 days of turn_signals. avg ignores
+// NULLs, which is the not_evident semantics 0004 designed: a message that
+// showed nothing either way does not pull the average towards low
+type Pattern struct {
+	ExhRecent       float64 // mean exhaustion, last 7 days (0 when none)
+	ExhBefore       float64 // mean exhaustion, 8 to 21 days ago (0 when none)
+	NRecent         int     // rated messages in the last 7 days
+	RecurringDemand string  // a demand raised in 3+ distinct sessions, or ""
+}
+
+// crisis turns never reach turn_signals (the analyser never sees them), so
+// they can never shape a trajectory
+func (s *Store) Pattern(ctx context.Context, userID string) (Pattern, error) {
+	var p Pattern
+	var recent, before *float64
+	var demand *string
+	err := s.pool.QueryRow(ctx, `
+		WITH w AS (
+			SELECT * FROM turn_signals
+			WHERE user_id = $1 AND created_at > now() - interval '21 days'
+		)
+		SELECT
+			avg(exhaustion) FILTER (WHERE created_at >  now() - interval '7 days')::float8,
+			avg(exhaustion) FILTER (WHERE created_at <= now() - interval '7 days')::float8,
+			count(exhaustion) FILTER (WHERE created_at > now() - interval '7 days')::int,
+			(SELECT d FROM w, unnest(w.demands) d GROUP BY d
+			   HAVING count(DISTINCT w.session_id) >= 3
+			   ORDER BY count(DISTINCT w.session_id) DESC, d LIMIT 1)
+		FROM w`, userID).Scan(&recent, &before, &p.NRecent, &demand)
+	if recent != nil {
+		p.ExhRecent = *recent
+	}
+	if before != nil {
+		p.ExhBefore = *before
+	}
+	if demand != nil {
+		p.RecurringDemand = *demand
+	}
+	return p, err
+}
+
+func (s *Store) SessionMoves(ctx context.Context, sessionID string) (map[string]bool, error) {
+	rows, err := s.pool.Query(ctx, `SELECT move FROM session_moves WHERE session_id = $1`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var m string
+		if err := rows.Scan(&m); err != nil {
+			return nil, err
+		}
+		out[m] = true
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) RecordMoves(ctx context.Context, sessionID string, moves []string) error {
+	if len(moves) == 0 {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO session_moves (session_id, move)
+		SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING`, sessionID, moves)
+	return err
+}
+
+// SessionVariant is the voice already chosen for a session, or ""
+func (s *Store) SessionVariant(ctx context.Context, sessionID string) (string, error) {
+	var v *string
+	err := s.pool.QueryRow(ctx, `SELECT prompt_variant FROM sessions WHERE id = $1`, sessionID).Scan(&v)
+	if err != nil || v == nil {
+		return "", err
+	}
+	return *v, nil
+}
+
+// ClaimSessionVariant sets the voice only if none is set and returns whichever
+// won, so two quick first messages in one session cannot pick two voices
+func (s *Store) ClaimSessionVariant(ctx context.Context, sessionID, variant string) (string, error) {
+	var v string
+	err := s.pool.QueryRow(ctx, `
+		UPDATE sessions SET prompt_variant = COALESCE(prompt_variant, $2)
+		WHERE id = $1 RETURNING prompt_variant`, sessionID, variant).Scan(&v)
+	return v, err
+}
+
+// VariantStats is {helpful, unhelpful} per voice: thumbs on replies plus the
+// end-of-session card. a neutral rating (0) credits neither side
+func (s *Store) VariantStats(ctx context.Context) (map[string][2]int, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT v, sum(up)::int, sum(down)::int FROM (
+			SELECT r.prompt_variant AS v, (f.rating > 0)::int AS up, (f.rating < 0)::int AS down
+			FROM feedback f JOIN recommendations r ON r.id = f.recommendation_id
+			WHERE r.prompt_variant IS NOT NULL
+			UNION ALL
+			SELECT prompt_variant, worth_it::int, (NOT worth_it)::int
+			FROM sessions WHERE prompt_variant IS NOT NULL AND worth_it IS NOT NULL
+		) t GROUP BY v`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][2]int{}
+	for rows.Next() {
+		var v string
+		var up, down int
+		if err := rows.Scan(&v, &up, &down); err != nil {
+			return nil, err
+		}
+		out[v] = [2]int{up, down}
+	}
+	return out, rows.Err()
+}
+
+func nullIfZero(v int) any {
+	if v == 0 {
+		return nil
+	}
+	return v
 }
 
 // nullIfEmpty turns "" into SQL NULL, so optional text and uuid columns stay
