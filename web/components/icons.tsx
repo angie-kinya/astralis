@@ -76,3 +76,21 @@ export const IconMore = (p: { className?: string }) => (
     <circle cx="6" cy="12" r=".9" /><circle cx="12" cy="12" r=".9" /><circle cx="18" cy="12" r=".9" />
   </svg>
 );
+
+export const IconClose = (p: { className?: string }) => (
+  <svg {...base} className={p.className} aria-hidden>
+    <path d="M7 7l10 10M17 7 7 17" />
+  </svg>
+);
+
+/** play: three stars joined into a small constellation, the far one still a dot */
+export const IconPlay = (p: { className?: string }) => (
+  <svg {...base} className={p.className} aria-hidden>
+    <path d="M5.5 16.5 10.5 8.5 16 12.5" />
+    <path d="M16 12.5 19 6.5" strokeDasharray=".01 2.6" opacity=".6" />
+    <circle cx="5.5" cy="16.5" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="10.5" cy="8.5" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="16" cy="12.5" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="6.5" r="1" fill="currentColor" stroke="none" opacity=".6" />
+  </svg>
+);

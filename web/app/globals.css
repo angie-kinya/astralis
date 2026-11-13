@@ -49,6 +49,13 @@
     --contour-draw:  .2;
     --contour-rest:  .11;
     --contour-pulse: .34;
+
+    /* games: one colour per player, each >= 3:1 on the game pane (.game-pane)
+       in this theme. ratios against the pane in the comments */
+    --p-you:    139  92 246;   /* violet, 4.5:1 */
+    --p-them:   232 168  86;   /* amber, a person, 9.3:1 */
+    --p-bot:    232 121 206;   /* orchid, astralis's eye, 7.3:1. never the violet you play in */
+    --p-solo-b:  34 211 238;   /* cyan, solo's second colour, 10.6:1 */
   }
 
   /* Light is daylight through lavender glass, not a white page: a tinted
@@ -84,6 +91,11 @@
     --contour-draw:  .18;
     --contour-rest:  .1;
     --contour-pulse: .3;
+
+    --p-you:    104  58 220;   /* 6.2:1 on the pane */
+    --p-them:   166  94  12;   /* 4.8:1 */
+    --p-bot:    176  52 150;   /* 5.3:1 */
+    --p-solo-b:   8 112 136;   /* 5.5:1 */
   }
 
   html { -webkit-text-size-adjust: 100%; }
@@ -361,69 +373,96 @@
     transition-timing-function: ease-in-out;
   }
 
-  /* ------------------------------------------------------------ constellations
-     The board (components/game/Board.tsx). Each player's colour is one
-     custom property, --p, set by a gp-* class, so lines, squares and halos
-     share it and the light theme follows the tokens for free. Everything
-     moves slowly or not at all: the game should feel like joining stars on a
-     clear night, not like a timer. */
-  .gp-you  { --p: var(--violet); }
-  .gp-them { --p: var(--cyan); }
-  .gp-bot  { --p: var(--violet-2); }
+  /* ------------------------------------------------------------ games
+     Every board sits on an elevated pane from the .bubble family, a little
+     more opaque and blurred, so the page's grid and dots stop competing with
+     the board's own lines. Each player's colour is one custom property, --p,
+     set by a gp-* class, so lines, squares, halos and the legend share it and
+     the light theme follows the tokens for free. Nothing on a board is ever
+     drawn in ink or black: on a dark pane that reads as a hole. Everything
+     moves slowly or not at all. */
+  .game-pane {
+    @apply rounded-2xl border border-line bg-surface/[.88] p-3 backdrop-blur-[6px] sm:p-4;
+  }
+  [data-theme="light"] .game-pane {
+    box-shadow: 0 1px 2px rgba(60, 34, 140, .06), 0 12px 32px -18px rgba(76, 46, 170, .26);
+  }
 
-  .game-swatch { @apply inline-block h-2 w-2 shrink-0 rounded-full; background: rgb(var(--p)); }
+  /* the gp-* player classes sit outside @layer below: they are only ever built
+     as gp-${tone}, so tailwind would purge them from a layer */
 
-  .game-board svg { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  /* the legend's mark: the same line and glyph the board draws */
+  .game-swatch { @apply inline-block h-2 w-2 shrink-0 rounded-full; background: rgb(var(--p, var(--violet))); }
+  svg.game-swatch { @apply h-3.5 w-[1.875rem] overflow-visible rounded-none; background: none; }
+  .game-swatch line { stroke: rgb(var(--p)); stroke-width: 3; stroke-linecap: round; }
+  .game-swatch .game-box-fill { fill: rgb(var(--p)); }
+  .game-swatch .game-box-ring { fill: none; stroke: rgb(var(--p)); stroke-width: 2.2; }
+
+  /* --u is board units per screen pixel, measured by Board.tsx, so weights below are in px */
+  .game-board svg { --u: .5; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 
   .game-star { animation: game-twinkle 6s ease-in-out infinite; }
   .game-star-glow { fill: rgb(var(--violet-2) / .14); }
-  .game-star-core { fill: rgb(var(--ink) / .78); }
-  .game-star--cyan .game-star-glow { fill: rgb(var(--cyan) / .12); }
-  .game-star--on .game-star-glow { fill: rgb(var(--violet-2) / .24); }
-  .game-star--on.game-star--cyan .game-star-glow { fill: rgb(var(--cyan) / .2); }
+  .game-star-core { fill: rgb(var(--ink-2)); }
+  .game-star--on .game-star-glow { fill: rgb(var(--violet-2) / .22); }
   .game-star--on .game-star-core { fill: rgb(var(--ink)); }
   @keyframes game-twinkle {
     0%, 100% { opacity: 1; }
-    50%      { opacity: .62; }
+    50%      { opacity: .7; }
   }
 
   /* undrawn edges: a dotted guide, brightened only when a move is possible */
   .game-guide {
-    stroke: rgb(var(--ink-3) / .55); stroke-width: .7; stroke-linecap: round;
-    stroke-dasharray: .01 2.2;
+    stroke: rgb(var(--ink-3) / .8); stroke-width: calc(1.6px * var(--u)); stroke-linecap: round;
+    stroke-dasharray: .01 2.6;
     transition: stroke 160ms ease-out, stroke-width 160ms ease-out;
   }
-  .game-hit { stroke: transparent; stroke-width: 13; stroke-linecap: butt; }
+  .game-hit { fill: transparent; }
   .game-edge { outline: none; }
   .game-edge[aria-disabled="true"] { cursor: default; }
   [data-live="true"] .game-edge { cursor: pointer; }
   [data-live="true"] .game-edge:hover .game-guide,
   [data-live="true"] .game-edge:focus-visible .game-guide {
-    stroke: rgb(var(--violet)); stroke-width: 1.15; stroke-dasharray: .01 1.5;
+    stroke: rgb(var(--p-you) / .7); stroke-width: calc(3px * var(--u)); stroke-dasharray: none;
   }
   /* the keyboard always needs to see where it is, even while waiting */
-  .game-edge:focus-visible .game-guide { stroke: rgb(var(--violet-2) / .8); stroke-width: 1; }
+  .game-edge:focus-visible .game-hit { fill: rgb(var(--p-you) / .08); }
+  .game-edge:focus-visible .game-guide { stroke: rgb(var(--p-you) / .55); stroke-width: calc(2.4px * var(--u)); }
 
+  /* drawn edges: 3px, round caps, full opacity, in the drawer's colour */
   .game-line {
-    stroke: rgb(var(--p)); stroke-width: 1.15; stroke-linecap: round;
+    stroke: rgb(var(--p)); stroke-width: calc(3px * var(--u)); stroke-linecap: round;
     stroke-dasharray: 1; stroke-dashoffset: 0;
     animation: game-draw 560ms cubic-bezier(.2,.6,.2,1) both;
   }
-  /* drawn before this tab was open, so the drawer is unknown: starlight, not a side */
-  .game-line--old { --p: var(--ink-2); opacity: .75; }
+  /* drawer unknown (a game from before drawnBy existed): starlight, not a side */
+  .game-line--old { --p: var(--ink-2); }
   @keyframes game-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 
-  .game-halo {
-    stroke: rgb(var(--p) / .3); stroke-width: 3.4; stroke-linecap: round;
-    animation: game-fade 900ms ease-out both;
+  /* the opponent's last line breathes in a slow ring until the next move; the rest of
+     astralis's run that turn keeps a still, softer halo so every line it drew is findable */
+  .game-pulse {
+    stroke: rgb(var(--p)); stroke-linecap: round; stroke-width: calc(12px * var(--u));
+    animation: game-pulse 2.8s ease-in-out infinite;
   }
+  @keyframes game-pulse {
+    0%, 100% { stroke-opacity: .12; stroke-width: calc(8px * var(--u)); }
+    50%      { stroke-opacity: .4;  stroke-width: calc(14px * var(--u)); }
+  }
+  .game-run { stroke: rgb(var(--p) / .2); stroke-linecap: round; stroke-width: calc(9px * var(--u)); }
 
-  .game-box { animation: game-fade 1.6s ease-out both; }
-  .game-box rect { fill: rgb(var(--p) / .13); stroke: rgb(var(--p) / .22); stroke-width: .35; }
-  .game-box-mark { fill: rgb(var(--p) / .75); }
-  .game-box-ring { fill: none; stroke: rgb(var(--p) / .75); stroke-width: .6; }
+  /* claimed squares: 28% of the owner's colour and their glyph in full */
+  .game-box { animation: game-fade 1.2s ease-out both; }
+  .game-box rect { fill: rgb(var(--p) / .28); stroke: rgb(var(--p) / .55); stroke-width: calc(1px * var(--u)); }
+  .game-box-fill { fill: rgb(var(--p)); }
+  .game-box-ring { fill: none; stroke: rgb(var(--p)); stroke-width: calc(2px * var(--u)); }
   @keyframes game-fade { from { opacity: 0; } to { opacity: 1; } }
 }
+
+.gp-you    { --p: var(--p-you); }
+.gp-them   { --p: var(--p-them); }
+.gp-bot    { --p: var(--p-bot); }
+.gp-solo-b { --p: var(--p-solo-b); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -443,6 +482,8 @@
   .ripple-hint { display: none; }
   .wing-contour path { animation: none !important; }
 
-  /* the board stays still: no twinkle, lines and squares simply appear */
-  .game-star, .game-line, .game-halo, .game-box { animation: none !important; }
+  /* the board stays still: no twinkle, lines and squares simply appear, and the
+     last move keeps a steady outline instead of breathing */
+  .game-star, .game-line, .game-box, .game-pulse { animation: none !important; }
+  .game-pulse { stroke-opacity: .32; stroke-width: calc(10px * var(--u)); }
 }

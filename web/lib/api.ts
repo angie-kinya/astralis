@@ -178,7 +178,70 @@ export type Fact = {
 
 export type ReportReason = "harassment" | "spam" | "unsafe" | "other";
 
-// ---------------------------------------------------------------- constellations
+// ---------------------------------------------------------------- games
+// one game model, three engines. everything here is kind-agnostic; the view a
+// game carries is shaped per kind (ConstellationsView below, WordsView and
+// SudokuView in the puzzles block at the end of this file)
+
+export type GameKind = "constellations" | "words" | "sudoku";
+export type GameMode = "peer" | "astralis" | "solo";
+/** 0 is nobody, 1 is player_a, 2 is player_b (or astralis, or the second colour in solo) */
+export type Player = 0 | 1 | 2;
+
+export type GameOptions = {
+  level?: number;
+  topic?: string;
+  /** words: classic | anagram | mystery */
+  mode?: string;
+  /** set on daily puzzles, the nairobi day they belong to */
+  day?: string;
+};
+
+/** options sent when creating a game; daily is a request, day is what comes back */
+export type CreateOptions = { level?: number; topic?: string; mode?: string; daily?: boolean };
+
+/**
+ * edge numbering: horizontal first, e = r*(cols-1)+c joins (r,c)-(r,c+1);
+ * then vertical, e = H + r*cols + c joins (r,c)-(r+1,c), H = rows*(cols-1).
+ * box b = r*(cols-1)+c. an edge is playable only if it borders an active box
+ */
+export type ConstellationsView = {
+  /** stars per side */
+  rows: number;
+  cols: number;
+  edges: number;
+  /** per box: part of the board (orion is a mask) */
+  active: boolean[];
+  drawn: boolean[];
+  drawnBy: Player[];
+  owner: Player[];
+  toMove: 1 | 2;
+  lastEdge: number | null;
+};
+
+/** shaped for whoever asked: me, myTurn, score and result differ between the two players */
+export type Game = {
+  id: string;
+  kind: GameKind;
+  mode: GameMode;
+  level: number;
+  options: GameOptions;
+  /** null for astralis and solo */
+  peerId: string | null;
+  peerHandle: string | null;
+  me: 1 | 2;
+  /** puzzles and duels: true while active and I am not done */
+  myTurn: boolean;
+  status: "active" | "finished" | "abandoned";
+  result: "won" | "lost" | "draw" | "solved" | "unsolved" | null;
+  score: { me: number; them: number } | null;
+  /** narrow by kind: `game.view as WordsView` and so on. a constellations game always carries ConstellationsView */
+  view: ConstellationsView | { [k: string]: unknown };
+  /** constellations vs astralis: edges astralis drew in reply to this request, in order */
+  botEdges: number[];
+  version: number;
+  updatedAt: string;
+};
 
 export type Invite = {
   id: string;
@@ -191,39 +254,21 @@ export type Invite = {
   gameId: string | null;
   createdAt: string;
   expiresAt: string;
+  kind: "constellations" | "words";
+  options: GameOptions;
 };
 
-export type GameMode = "peer" | "astralis" | "solo";
-/** 0 is nobody, 1 is player_a, 2 is player_b (or astralis, or the second colour in solo) */
-export type Player = 0 | 1 | 2;
-
-/** shaped for whoever asked: me, myTurn, score and result differ between the two players */
-export type Game = {
-  id: string;
-  mode: GameMode;
-  /** null for astralis and solo */
-  peerId: string | null;
-  peerHandle: string | null;
-  me: 1 | 2;
-  /** 24 edges: 0..11 horizontal (r*3+c), 12..23 vertical (12+r*4+c) */
-  drawn: boolean[];
-  /** 9 boxes, r*3+c */
-  owner: Player[];
-  toMove: 1 | 2;
-  /** always true in solo while active */
-  myTurn: boolean;
-  score: { me: number; them: number };
-  status: "active" | "finished" | "abandoned";
-  /** null unless finished, and always null in solo */
-  result: "won" | "lost" | null;
-  lastEdge: number | null;
-  /** edges astralis drew in reply to this request, in order, so they can be played back one by one */
-  botEdges: number[];
-  /** not in the contract yet: who drew each edge. used when present, otherwise drawers are tracked per tab */
-  drawnBy?: Player[];
-  version: number;
-  updatedAt: string;
+export type Catalog = {
+  constellations: { levels: { level: number; name: string; rows: number; cols: number; boxes: number }[] };
+  words: {
+    topics: { id: string; name: string; blurb: string }[];
+    modes: { id: string; name: string; blurb: string }[];
+  };
+  sudoku: { levels: { level: number; name: string; size: number }[] };
 };
+
+/** highest playable constellations level */
+export type Progress = { constellations: { unlocked: number } };
 
 export type LeaderRow = { handle: string; points: number; games: number; me: boolean };
 export type Leaderboard = {
@@ -247,18 +292,63 @@ export const unblockPeer = (peerId: string) => api<void>(`/peers/${peerId}/block
 export const reportPeer  = (peerId: string, reason: ReportReason, messageId?: string) =>
   api<void>(`/peers/${peerId}/report`, { method: "POST", body: JSON.stringify({ reason, messageId }) });
 
-export const sendInvite    = (peerId: string) =>
-  api<{ invite: Invite }>(`/peers/${peerId}/invites`, { method: "POST" });
+export const sendInvite    = (peerId: string, kind?: Invite["kind"], options?: GameOptions) =>
+  api<{ invite: Invite }>(`/peers/${peerId}/invites`, {
+    method: "POST", body: JSON.stringify(kind ? { kind, options: options ?? {} } : {}),
+  });
 export const listInvites   = () => api<{ invites: Invite[] }>("/games/invites");
 export const acceptInvite  = (id: string) => api<{ game: Game }>(`/games/invites/${id}/accept`, { method: "POST" });
 /** either side; from the sender it is a cancel */
 export const declineInvite = (id: string) => api<void>(`/games/invites/${id}/decline`, { method: "POST" });
-export const createGame    = (mode: "astralis" | "solo") =>
-  api<{ game: Game }>("/games", { method: "POST", body: JSON.stringify({ mode }) });
+export const createGame    = (kind: GameKind, mode: "astralis" | "solo", options: CreateOptions = {}) =>
+  api<{ game: Game }>("/games", { method: "POST", body: JSON.stringify({ kind, mode, options }) });
 export const activeGames   = () => api<{ games: Game[] }>("/games/active");
 export const getGame       = (id: string) => api<{ game: Game }>(`/games/${id}`);
-export const playMove      = (id: string, edge: number, version: number) =>
-  api<{ game: Game }>(`/games/${id}/moves`, { method: "POST", body: JSON.stringify({ edge, version }) });
+/** move is per kind: {edge} | {guess} | {hint} | {grid}. version is the one the move was made against */
+export const playMove      = (id: string, move: Record<string, unknown>, version: number) =>
+  api<{ game: Game }>(`/games/${id}/moves`, { method: "POST", body: JSON.stringify({ move, version }) });
+export const catalog       = () => api<Catalog>("/games/catalog");
+export const progress      = () => api<Progress>("/games/progress");
 export const leaderboard   = () => api<Leaderboard>("/games/leaderboard");
 export const setLeaderboardOptIn = (optIn: boolean) =>
   api<void>("/me/leaderboard-opt-in", { method: "POST", body: JSON.stringify({ optIn }) });
+
+// ---------------------------------------------------------------- puzzles
+// the views a words or sudoku game carries in game.view. owned by the puzzle
+// components (components/words, components/sudoku); append-only
+
+export type LetterMark = "correct" | "present" | "absent";
+
+export type WordsView = {
+  length: number;
+  maxGuesses: number;
+  mode: "classic" | "anagram" | "mystery";
+  /** null in mystery until the puzzle is over */
+  topic: string | null;
+  /** anagram only */
+  scrambled: string | null;
+  guesses: { word: string; marks: LetterMark[] }[];
+  letters: Record<string, LetterMark>;
+  /** revealed so far, in order: clue, a letter, first and last */
+  hints: string[];
+  hintsLeft: number;
+  solved: boolean;
+  over: boolean;
+  /** answer and fact arrive only once over */
+  answer: string | null;
+  clue: string | null;
+  fact: string | null;
+  /** duel only, and never the other person's letters */
+  opponent: { guesses: number; solved: boolean; over: boolean } | null;
+};
+
+export type SudokuView = {
+  size: 6 | 9;
+  boxRows: number;
+  boxCols: number;
+  level: number;
+  /** n*n chars, '0' empty */
+  givens: string;
+  entries: string;
+  solved: boolean;
+};

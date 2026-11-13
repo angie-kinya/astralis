@@ -87,9 +87,10 @@ func main() {
 		slog.Info("purged expired auth rows", "count", n)
 	}
 
-	// constellations housekeeping. no hub in this process, so nobody is told;
-	// open tabs see the change on their next fetch. an abandoned game earns no
-	// points, which is why it is a status of its own and not "finished"
+	// games housekeeping, every kind. no hub in this process, so nobody is
+	// told; open tabs see the change on their next fetch. an abandoned game
+	// earns no points, which is why it is a status of its own and not
+	// "finished". solo words and sudoku are never abandoned (see the store)
 	if n, err := db.ExpireInvites(ctx); err != nil {
 		slog.Error("expire game invites", "err", err)
 	} else if n > 0 {

@@ -2,164 +2,111 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import Butterfly from "@/components/Butterflies";
-import Board, { type Tone } from "@/components/game/Board";
-import { EDGES, applyLocal, boxEdges, boxesOf, count } from "@/components/game/rules";
+import Board, { Swatch, type Tone } from "@/components/game/Board";
+import { levelName } from "@/components/game/LevelPicker";
+import { applyLocal, boxEdges, boxesOf, count, geometry, playable, view } from "@/components/game/rules";
+import { useCatalog, useProgress } from "@/components/game/useCatalog";
 import { AstralisMark } from "@/components/Speaker";
-import { IconBack } from "@/components/icons";
 import {
   ApiError, type Game, type Player, createGame, getGame, playMove, sendInvite, userMessage,
 } from "@/lib/api";
-import { useEvent, useEventsConnected } from "@/lib/events";
 
 const STEP = 350; // ms between astralis's lines when they are played back
 
 const reducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// a layout effect, so astralis's reply is hidden before it is ever painted; plain effect on the server
+const useBeforePaint = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 /**
- * one game of constellations, in any of its three modes.
+ * one game of constellations, in any of its three modes. the room above
+ * (PlayRoom) owns loading, events and polling; this owns the board.
  *
  *  - the server is the referee. a move is drawn at once (applyLocal) and
  *    posted with the version it was drawn against; a 409 means the board
  *    moved underneath us, so the tab refetches and quietly takes the server's
  *    word. nothing is ever offered while it is not this tab's turn.
- *  - game.update events are hints like every other event: they are taken only
- *    when newer than what is on screen, and a 60 s poll covers a dropped stream.
  *  - astralis answers inside the same request, so its lines arrive all at once
  *    in botEdges. they are hidden and revealed one by one, so its reply reads
- *    as moves rather than a jump (instantly under reduced motion).
- *  - the contract does not say who drew each edge, so drawers are remembered
- *    per tab from what this tab saw happen. edges from before it opened are
- *    drawn in neutral starlight rather than guessed
+ *    as moves rather than a jump (instantly under reduced motion), and stay
+ *    haloed until you move so you can see everything it drew
  */
-export default function GameView({ gameId }: { gameId: string }) {
+export default function GameView({ game, onGame }: { game: Game; onGame: (g: Game) => void }) {
   const router = useRouter();
-  const live = useEventsConnected();
-  const [game, setGame] = useState<Game | null>(null);
-  const [drawers, setDrawers] = useState<Player[]>(() => Array(EDGES).fill(0));
+  const cat = useCatalog();
+  const levels = cat?.constellations.levels;
+  const { unlocked, refresh: refreshProgress } = useProgress();
   const [hidden, setHidden] = useState<number[]>([]);
-  const [missing, setMissing] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [again, setAgain] = useState(false);
 
-  const gameRef = useRef<Game | null>(null);
-  const drawersRef = useRef<Player[]>(drawers);
   const pendingRef = useRef(false);
   const timers = useRef<number[]>([]);
-  // the last edge on screen before astralis's reply started, so the halo has somewhere to sit
+  const seen = useRef<{ version: number; lastEdge: number | null } | null>(null);
+  // the last edge on screen before astralis's reply started, so the pulse has somewhere to sit
   const beforeBot = useRef<number | null>(null);
 
   const clearTimers = () => { timers.current.forEach((t) => window.clearTimeout(t)); timers.current = []; };
   useEffect(() => clearTimers, []);
 
-  const adopt = useCallback((next: Game, force = false) => {
-    const prev = gameRef.current;
-    if (!force && prev && next.version <= prev.version) return;
+  const v = view(game);
+  const geo = geometry(v);
 
-    let d: Player[];
-    if (next.drawnBy && next.drawnBy.length === EDGES) {
-      d = next.drawnBy.slice();
-    } else {
-      d = drawersRef.current.slice();
-      const bot = new Set(next.botEdges);
-      for (let e = 0; e < EDGES; e++) {
-        if (!next.drawn[e]) { d[e] = 0; continue; }
-        if (bot.has(e)) d[e] = (3 - next.me) as Player;
-        // new since the last state this tab saw: whoever was to move then drew it. a run
-        // of several only happens when one side keeps closing squares, so it holds for all
-        else if (prev && !prev.drawn[e] && !d[e]) d[e] = prev.toMove;
-      }
-    }
-    drawersRef.current = d;
-    setDrawers(d);
-
+  useBeforePaint(() => {
+    const prev = seen.current;
+    seen.current = { version: game.version, lastEdge: v.lastEdge };
+    // the optimistic copy shares its version with the state it came from: nothing to play back
+    if (prev && prev.version === game.version) return;
     clearTimers();
-    const queue = reducedMotion() ? [] : next.botEdges.filter((e) => next.drawn[e]);
+    const queue = reducedMotion() ? [] : game.botEdges.filter((e) => v.drawn[e]);
     beforeBot.current = prev?.lastEdge ?? null;
     setHidden(queue);
     queue.forEach((_, i) => {
       timers.current.push(window.setTimeout(() => setHidden((h) => h.slice(1)), STEP * (i + 1)));
     });
+  }, [game]);
 
-    gameRef.current = next;
-    setGame(next);
-  }, []);
+  const active = game.status === "active";
 
-  const load = useCallback(async () => {
-    try {
-      const { game } = await getGame(gameId);
-      adopt(game, true);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 404) setMissing(true);
-      else setError(userMessage(e));
-    }
-  }, [gameId, adopt]);
+  // a finish may open the next sky
+  useEffect(() => { if (!active) refreshProgress(); }, [active, refreshProgress]);
 
-  useEffect(() => { void load(); }, [load]);
-
-  useEvent<{ game: Game }>("game.update", ({ game }) => {
-    if (game?.id === gameId) adopt(game);
-  });
-
-  const active = game?.status === "active";
-
-  // only while the stream is down, and only while there is anything left to happen
-  useEffect(() => {
-    if (live || !active) return;
-    const id = setInterval(() => void load(), 60_000);
-    return () => clearInterval(id);
-  }, [live, active, load]);
-
-  // a tab coming back from the background catches up at once rather than at the next poll
-  useEffect(() => {
-    const onShow = () => { if (document.visibilityState === "visible") void load(); };
-    document.addEventListener("visibilitychange", onShow);
-    return () => document.removeEventListener("visibilitychange", onShow);
-  }, [load]);
-
-  const canMove = !!game && active && game.myTurn && !pending && hidden.length === 0;
+  const canMove = active && game.myTurn && !pending && hidden.length === 0;
 
   async function move(e: number) {
-    const g = gameRef.current;
-    if (!g || g.status !== "active" || !g.myTurn || g.drawn[e] || pendingRef.current || hidden.length) return;
+    if (!canMove || v.drawn[e] || !playable(geo, e) || pendingRef.current) return;
     pendingRef.current = true; setPending(true); setError(null); setNotice(null);
-
-    const d = drawersRef.current.slice();
-    d[e] = g.mode === "solo" ? g.toMove : g.me;
-    drawersRef.current = d; setDrawers(d);
-    const optimistic = applyLocal(g, e);
-    gameRef.current = optimistic; setGame(optimistic);
-
+    onGame(applyLocal(game, e));
     try {
-      const { game: next } = await playMove(g.id, e, g.version);
-      adopt(next);
+      const { game: next } = await playMove(game.id, { edge: e }, game.version);
+      onGame(next);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setNotice("the board moved on before that landed. here it is as it stands.");
       } else {
         setError(userMessage(err));
       }
-      await load();
+      try { onGame((await getGame(game.id)).game); } catch { /* the room's poll catches up */ }
     } finally {
       pendingRef.current = false; setPending(false);
     }
   }
 
-  async function playAgain() {
-    if (!game) return;
+  async function playAgain(level: number) {
     setAgain(true); setError(null); setNotice(null);
     try {
       if (game.mode === "peer" && game.peerId) {
-        await sendInvite(game.peerId);
-        setNotice(`invited. it waits in your thread with ${game.peerHandle}.`);
+        await sendInvite(game.peerId, "constellations", { level });
+        setNotice(`invited. it waits in your chat with ${game.peerHandle}.`);
       } else if (game.mode !== "peer") {
-        const { game: g } = await createGame(game.mode);
-        router.push(`/circle/play/${g.id}`);
+        const { game: g } = await createGame("constellations", game.mode, { level });
+        router.push(`/play/${g.id}`);
         return;
       }
     } catch (e) {
@@ -170,84 +117,75 @@ export default function GameView({ gameId }: { gameId: string }) {
     setAgain(false);
   }
 
-  if (missing) {
-    return (
-      <Frame>
-        <p className="font-mono text-[.75rem] leading-relaxed text-ink-3">
-          this game is not here. it may belong to someone else, or the link is wrong.
-        </p>
-      </Frame>
-    );
-  }
-  if (!game) {
-    return (
-      <Frame>
-        {error
-          ? <p role="alert" className="font-mono text-[.75rem] text-amber">{error}</p>
-          : <p className="font-mono text-[.75rem] text-ink-3">gathering the stars…</p>}
-      </Frame>
-    );
-  }
-
   // what is on screen: the game minus any of astralis's lines still waiting to be revealed
   const hide = new Set(hidden);
-  const drawnV = game.drawn.map((d, e) => d && !hide.has(e));
-  const ownerV = game.owner.map((o, b) => (boxEdges(b).every((e) => drawnV[e]) ? o : 0)) as Player[];
+  const drawnV = v.drawn.map((d, e) => d && !hide.has(e));
+  const ownerV = v.owner.map((o, b) => (boxEdges(geo, b).every((e) => drawnV[e]) ? o : 0)) as Player[];
   const shown = game.botEdges.length - hidden.length;
-  const lastV = hidden.length === 0 ? game.lastEdge
+  const lastV = hidden.length === 0 ? v.lastEdge
     : shown > 0 ? game.botEdges[shown - 1]! : beforeBot.current;
-  const lastDrawer: Player = lastV === null ? 0 : (drawers[lastV] || derive(game, lastV));
+  const lastDrawer: Player = lastV === null ? 0 : v.drawnBy[lastV] ?? 0;
+  const run = game.botEdges.slice(0, shown);
 
-  const other = (3 - game.me) as Player;
+  const solo = game.mode === "solo";
+  const a: Player = solo ? 1 : game.me;
+  const b = (3 - a) as Player;
   const tone = (p: Player): Tone =>
-    game.mode === "solo" ? (p === 1 ? "you" : "them")
-      : p === game.me ? "you" : game.mode === "astralis" ? "bot" : "them";
-  const mine = count(ownerV, game.mode === "solo" ? 1 : game.me);
-  const theirs = count(ownerV, game.mode === "solo" ? 2 : other);
-  const themName = game.mode === "astralis" ? "astralis" : "them";
-
-  const closedLast = lastV !== null && boxesOf(lastV).some((b) => ownerV[b] !== 0);
+    solo ? (p === 1 ? "you" : "solo-b") : p === game.me ? "you" : game.mode === "astralis" ? "bot" : "them";
+  const mine = count(ownerV, a), theirs = count(ownerV, b);
+  const themName = game.mode === "astralis" ? "astralis" : game.mode === "peer" ? (game.peerHandle ?? "them") : "cyan";
+  const youName = solo ? "violet" : "you";
+  const closedLast = lastV !== null && boxesOf(geo, lastV).some((x) => ownerV[x] !== 0);
+  const name = levelName(levels, game.level);
+  const nextOpen = !active && game.mode !== "peer" && unlocked !== null && unlocked > game.level && game.level < 5;
 
   return (
-    <Frame>
+    <div>
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <Opponent game={game} />
-        <p className="ml-auto flex items-center gap-2 font-mono text-[.75rem] text-ink-2"
-           aria-label={game.mode === "solo"
-             ? `violet ${mine}, cyan ${theirs}`
-             : `you ${mine}, ${themName} ${theirs}`}>
-          <span className="flex items-center gap-1.5">
-            <span className="game-swatch gp-you" aria-hidden />{game.mode === "solo" ? "violet" : "you"}{" "}
-            <b className="font-medium text-ink">{mine}</b>
-          </span>
-          <span className="text-ink-3" aria-hidden>·</span>
-          <span className="flex items-center gap-1.5">
-            <span className={`game-swatch gp-${tone(game.mode === "solo" ? 2 : other)}`} aria-hidden />
-            {game.mode === "solo" ? "cyan" : themName} <b className="font-medium text-ink">{theirs}</b>
-          </span>
-        </p>
+        <span className="ml-auto font-mono text-[.5625rem] uppercase tracking-[.12em] text-ink-3">{name}</span>
       </header>
 
+      {/* the score is the legend: which colour and shape is whose, in the same marks the board uses */}
+      <ul aria-label={`score: ${youName} ${mine}, ${themName} ${theirs}`}
+          className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1 font-mono text-[.75rem] text-ink-2">
+        <li className="flex items-center gap-1.5">
+          <Swatch tone={tone(a)} />{youName} <b className="font-medium text-ink">{mine}</b>
+        </li>
+        <li className="flex min-w-0 items-center gap-1.5">
+          <Swatch tone={tone(b)} /><span className="truncate">{themName}</span> <b className="font-medium text-ink">{theirs}</b>
+        </li>
+      </ul>
+
       <p role="status" aria-live="polite"
-         className="mt-3 min-h-[1.25rem] font-mono text-[.6875rem] text-ink-3">
+         className="mt-3 min-h-[1.25rem] font-mono text-[.6875rem] text-ink-2">
         {active && turnLine()}
       </p>
 
-      <div className="mt-4">
-        <Board drawn={drawnV} owner={ownerV} drawers={drawers}
-               lastEdge={lastV} lastDrawer={lastDrawer} tone={tone}
+      <div className="game-pane mt-2">
+        <Board geo={geo} drawn={drawnV} owner={ownerV} drawnBy={v.drawnBy}
+               lastEdge={lastV} run={game.mode === "astralis" ? run : []} tone={tone}
                interactive={active} live={canMove} onMove={(e) => void move(e)} />
       </div>
 
       {game.status !== "active" && (
-        <section className="card mt-6 animate-rise p-5 text-center">
+        <section className="game-pane mt-5 animate-rise p-5 text-center">
           <p className="font-sans text-[1.0625rem] font-medium tracking-[-.01em] text-ink">{headline()}</p>
           <p className="mx-auto mt-1.5 max-w-measure text-[.8125rem] leading-relaxed text-ink-2">{subline()}</p>
+          {nextOpen && (
+            <p className="mt-2 font-mono text-[.6875rem] text-violet-2">{levelName(levels, game.level + 1)} is open</p>
+          )}
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <Link href="/circle" className="btn-quiet">Back to the circle</Link>
+            <Link href="/play" className="btn-quiet">Back to play</Link>
             {(game.mode !== "peer" || game.peerId) && (
-              <button className="btn-primary" disabled={again} onClick={() => void playAgain()}>
-                {game.mode === "peer" ? `Invite ${game.peerHandle} again` : "Play again"}
+              <button className={nextOpen ? "btn-quiet" : "btn-primary"} disabled={again}
+                      onClick={() => void playAgain(game.level)}>
+                {game.mode === "peer" ? `Invite ${game.peerHandle} again` : `${name} again`}
+              </button>
+            )}
+            {nextOpen && (
+              <button className="btn-primary" disabled={again} onClick={() => void playAgain(game.level + 1)}>
+                Try {levelName(levels, game.level + 1)}
               </button>
             )}
           </div>
@@ -256,24 +194,23 @@ export default function GameView({ gameId }: { gameId: string }) {
 
       {notice && <p role="status" className="mt-4 text-center font-mono text-[.6875rem] text-ink-3">{notice}</p>}
       {error && <p role="alert" className="mt-4 text-center font-mono text-[.75rem] text-amber">{error}</p>}
-    </Frame>
+    </div>
   );
 
   function turnLine(): string {
-    if (!game) return "";
     if (hidden.length) return "astralis is joining stars…";
-    if (game.mode === "solo") {
-      const who = game.toMove === 1 ? "violet" : "cyan";
+    if (solo) {
+      const who = v.toMove === 1 ? "violet" : "cyan";
       return closedLast ? `a square closed: ${who} again` : `${who}'s move`;
     }
     if (game.myTurn) return closedLast && lastDrawer === game.me ? "a square closed: your move again" : "your move";
-    return game.mode === "astralis" ? "astralis is joining stars…" : "their move";
+    return game.mode === "astralis" ? "astralis is joining stars…" : `${game.peerHandle ?? "their"}'s move`;
   }
 
   function headline(): string {
-    if (!game) return "";
     if (game.status === "abandoned") return "this game went quiet";
-    if (game.mode === "solo") return "all nine squares are closed";
+    if (solo) return "every square is closed";
+    if (game.result === "draw") return game.mode === "peer" ? "a shared sky: +2 points" : "a shared sky";
     if (game.mode === "astralis") {
       return game.result === "won" ? "you closed more squares this time" : "astralis closed more squares this time";
     }
@@ -281,24 +218,12 @@ export default function GameView({ gameId }: { gameId: string }) {
   }
 
   function subline(): string {
-    if (!game) return "";
     if (game.status === "abandoned") return "A day passed without a move, so it was set down. Nothing is lost.";
-    if (game.mode === "solo") return `Violet ${mine}, cyan ${theirs}. Both of them were you.`;
+    if (solo) return `Violet ${mine}, cyan ${theirs}. Both of them were you.`;
+    if (game.result === "draw" && game.mode === "astralis") return `${mine} squares each. An even night, which is a nice way for one to end.`;
     if (game.mode === "astralis") return "Games with Astralis are just for you. They never touch the weekly board.";
     return `Thank you for playing with ${game.peerHandle}. Every finished game counts this week.`;
   }
-}
-
-/**
- * who drew the last edge when this tab did not see it happen. any square next
- * to it that is owned was completed by it (it was the missing side), so the
- * owner drew it; otherwise the turn passed, so it was the player not to move
- */
-function derive(g: Game, e: number): Player {
-  if (g.lastEdge !== e) return 0;
-  const closed = boxesOf(e).find((b) => g.owner[b]);
-  if (closed !== undefined) return g.owner[closed]!;
-  return g.status === "active" ? ((3 - g.toMove) as Player) : 0;
 }
 
 function Opponent({ game }: { game: Game }) {
@@ -324,24 +249,5 @@ function Opponent({ game }: { game: Game }) {
       <Butterfly pose="rest" className="h-4 w-4 shrink-0 text-violet-2/70" />
       <span className="truncate font-mono text-[.8125rem] text-ink">{game.peerHandle}</span>
     </span>
-  );
-}
-
-function Frame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-xl px-4 py-5 sm:py-7">
-        <div className="mb-5 flex items-center justify-between">
-          <Link href="/circle"
-                className="-ml-1 flex items-center gap-1 rounded-lg px-1 py-0.5 font-mono text-[.6875rem]
-                           text-ink-3 transition-colors hover:text-ink">
-            <IconBack className="h-3.5 w-3.5" />
-            circle
-          </Link>
-          <span className="label">constellations</span>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }

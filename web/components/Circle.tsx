@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -9,12 +10,13 @@ import Composer from "@/components/Composer";
 import CrisisNotice from "@/components/CrisisNotice";
 import { UNREAD_CHANGED } from "@/components/Rail";
 import ReportSheet from "@/components/ReportSheet";
-import ConstellationsPanel from "@/components/game/ConstellationsPanel";
-import InviteCard, { ConstellationGlyph } from "@/components/game/InviteCard";
-import { IconBack, IconMore } from "@/components/icons";
+import { KindGlyph } from "@/components/game/Glyphs";
+import InviteCard from "@/components/game/InviteCard";
+import PlayPicker from "@/components/game/PlayPicker";
+import { IconBack, IconClose, IconMore, IconPlay } from "@/components/icons";
 import {
-  ApiError, type Invite, acceptInvite, api, blockPeer, declineInvite, deletePeerMessage, listInvites,
-  type Peer, type PeerMessage, type ReportReason, reportPeer, sendInvite, userMessage,
+  ApiError, type GameOptions, type Invite, acceptInvite, api, blockPeer, declineInvite, deletePeerMessage,
+  listInvites, type Peer, type PeerMessage, type ReportReason, reportPeer, sendInvite, userMessage,
 } from "@/lib/api";
 import { useEvent, useEventsConnected } from "@/lib/events";
 import { scrollPaneToEnd } from "@/lib/scroll";
@@ -44,10 +46,13 @@ const gone = (m: Msg) => m.deleted || m.body === null;
  *  5. Delete, block and report exist before anything invites more contact.
  *     A block is silent: the blocked person sees "no longer accepting
  *     messages", never that they were blocked.
- *  6. Constellations (behind me.games) rides the same thread: an invite is a
- *     card at the end of it, and accepting takes both people to the board.
- *     An invite past its expiry is hidden here at once; the server only
- *     notices on its next cron pass.
+ *  6. Games (behind me.games) ride the same thread: "play" in the header
+ *     opens a small picker, the invite is a card at the end of the thread,
+ *     and accepting takes both people to /play/:id. Everything else about
+ *     games lives under /play. An invite past its expiry is hidden here at
+ *     once; the server only notices on its next cron pass.
+ *  7. An open chat always has a way out: the close button (the back arrow
+ *     on phones) and esc both return to the list.
  */
 export default function Circle() {
   const { me, setMe } = useMe();
@@ -59,6 +64,7 @@ export default function Circle() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [picker, setPicker] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const [report, setReport] = useState<{ messageId?: string } | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -66,7 +72,6 @@ export default function Circle() {
   const pane = useRef<HTMLDivElement>(null);
   const live = useEventsConnected();
   const router = useRouter();
-  const wide = useWide();
   const games = me.games;
 
   // events arrive in closures registered once, so they read the open thread through a ref
@@ -156,7 +161,7 @@ export default function Circle() {
     // the sender is waiting on this: take them to the board. the recipient's own tab
     // routes from the accept response, and their other tabs stay where they are
     if (invite.status === "accepted" && invite.gameId && invite.mine) {
-      router.push(`/circle/play/${invite.gameId}`);
+      router.push(`/play/${invite.gameId}`);
     }
   });
 
@@ -170,14 +175,20 @@ export default function Circle() {
     return () => clearInterval(id);
   }, [pending.length]);
 
-  async function invite() {
+  async function invite(kind: Invite["kind"], options: GameOptions) {
     if (!active) return;
-    setMenu(false); setError(null); setNotice(null);
+    setError(null); setNotice(null);
     try {
-      const { invite: inv } = await sendInvite(active.id);
+      const { invite: inv } = await sendInvite(active.id, kind, options);
       upsert(inv);
+      setPicker(false);
     } catch (e) {
+      setPicker(false);
       if (e instanceof ApiError && e.code === "invite_pending") { void loadInvites(); return; }
+      if (e instanceof ApiError && e.code === "level_locked") {
+        setError(`${active.handle} has not opened that sky yet. A smaller one will work.`);
+        return;
+      }
       if (e instanceof ApiError && e.code === "peer_unavailable") {
         setError(`${active.handle} is not taking invites right now.`);
         return;
@@ -193,7 +204,7 @@ export default function Circle() {
   async function accept(inv: Invite) {
     try {
       const { game } = await acceptInvite(inv.id);
-      router.push(`/circle/play/${game.id}`);
+      router.push(`/play/${game.id}`);
     } catch (e) {
       if (e instanceof ApiError && e.code === "invite_gone") {
         setInvites((all) => all.filter((i) => i.id !== inv.id));
@@ -213,10 +224,31 @@ export default function Circle() {
 
   useEffect(() => { scrollPaneToEnd(pane.current, true); }, [thread.length, threadInvites.length]);
 
+  function closeThread() {
+    setActive(null); activeRef.current = null;
+    setThread([]); setCrisis(null); setError(null); setNotice(null);
+    setMenu(false); setPicker(false); setConfirmBlock(false);
+  }
+
+  // esc closes whatever is on top: a menu or picker first, then the chat itself. a half
+  // written message is never thrown away by a stray esc
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || report) return;
+      if (menu || picker) { setMenu(false); setPicker(false); return; }
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT") && (t as HTMLInputElement).value.trim()) return;
+      closeThread();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, menu, picker, report]);
+
   async function openThread(p: Peer) {
     setActive(p); activeRef.current = p;
     setThread([]); setCrisis(null); setError(null); setNotice(null);
-    setMenu(false); setConfirmBlock(false);
+    setMenu(false); setPicker(false); setConfirmBlock(false);
     await loadThread(p.id);
     setPeers((prev) => prev.map((x) => (x.id === p.id ? { ...x, unread: 0 } : x)));
   }
@@ -262,7 +294,7 @@ export default function Circle() {
       await blockPeer(active.id);
       const id = active.id;
       setPeers((prev) => prev.filter((p) => p.id !== id));
-      setActive(null); setThread([]); setConfirmBlock(false); setMenu(false);
+      closeThread();
     } catch (e) { setError(msg(e)); }
   }
 
@@ -323,9 +355,10 @@ export default function Circle() {
                     {p.online ? "online now" : relative(p.lastSeen)}
                   </span>
                 </span>
-                {pending.some((i) => i.peerId === p.id && !i.mine) && (
-                  <ConstellationGlyph className="h-3.5 w-3.5 shrink-0 text-violet-2" />
-                )}
+                {(() => {
+                  const inv = pending.find((i) => i.peerId === p.id && !i.mine);
+                  return inv && <KindGlyph kind={inv.kind ?? "constellations"} className="h-3.5 w-3.5 shrink-0 text-violet-2" />;
+                })()}
                 {p.unread > 0 && (
                   <span className="grid h-4 min-w-4 place-items-center rounded-full bg-cyan px-1
                                    font-mono text-[.5625rem] font-bold text-bg">{p.unread}</span>
@@ -335,10 +368,8 @@ export default function Circle() {
           ))}
         </ul>
 
-        {/* on a phone the list is the whole screen, so the panel lives under it */}
-        {games && !wide && (
-          <ConstellationsPanel className="max-h-[55%] shrink-0 overflow-y-auto border-t border-line px-4 py-4" />
-        )}
+        {/* on a phone the list is the whole screen, so the way to the games lives under it */}
+        {games && <PlayLink className="shrink-0 border-t border-line px-3 py-2.5 sm:hidden" />}
       </aside>
 
       {/* Thread */}
@@ -355,29 +386,49 @@ export default function Circle() {
               <p className="mx-auto mt-2 max-w-measure font-sans text-[.8125rem] leading-relaxed text-ink-3">
                 Messages wait for people who are offline. Nobody is expected to reply quickly.
               </p>
-              {games && wide && (
-                <ConstellationsPanel className="card mx-auto mt-8 w-full max-w-sm p-5 text-left" />
-              )}
+              {games && <PlayLink className="mx-auto mt-8 w-full max-w-sm" />}
             </div>
           </div>
         ) : (
           <>
             <header className="relative flex items-center gap-2.5 border-b border-line px-4 py-2.5">
-              <button onClick={() => setActive(null)} aria-label="Back to people"
-                      className="rounded-lg p-1 text-ink-3 hover:bg-raised hover:text-ink sm:hidden">
+              <button onClick={closeThread} aria-label="Back to people"
+                      className="-ml-1.5 grid h-9 w-9 place-items-center rounded-lg text-ink-3 hover:bg-raised hover:text-ink sm:hidden">
                 <IconBack className="h-4 w-4" />
               </button>
               <span className={active.online ? "dot-on" : "dot-off"} aria-hidden />
-              <span className="font-mono text-[.8125rem] text-ink">{active.handle}</span>
-              <span className="font-mono text-[.5625rem] text-ink-3">
+              <span className="min-w-0 truncate font-mono text-[.8125rem] text-ink">{active.handle}</span>
+              <span className="shrink-0 font-mono text-[.5625rem] text-ink-3 max-[380px]:hidden">
                 {active.online ? "online" : relative(active.lastSeen)}
               </span>
 
-              <button onClick={() => { setMenu((v) => !v); setConfirmBlock(false); }}
-                      aria-label={`Options for ${active.handle}`} aria-haspopup="menu" aria-expanded={menu}
-                      className="ml-auto rounded-lg p-1 text-ink-3 hover:bg-raised hover:text-ink">
-                <IconMore className="h-4 w-4" />
-              </button>
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                {games && (
+                  <button onClick={() => { setPicker((v) => !v); setMenu(false); }}
+                          disabled={threadInvites.length > 0}
+                          title={threadInvites.length > 0 ? "an invite is already waiting in this chat" : undefined}
+                          aria-haspopup="dialog" aria-expanded={picker}
+                          className="flex h-9 items-center gap-1.5 rounded-lg border border-violet/35 px-2.5
+                                     font-mono text-[.6875rem] text-violet-2 transition-colors duration-150
+                                     hover:bg-violet/10 disabled:opacity-45 aria-expanded:bg-violet/10">
+                    <IconPlay className="h-4 w-4" />
+                    play
+                  </button>
+                )}
+                <button onClick={() => { setMenu((v) => !v); setPicker(false); setConfirmBlock(false); }}
+                        aria-label={`Options for ${active.handle}`} aria-haspopup="menu" aria-expanded={menu}
+                        className="grid h-9 w-9 place-items-center rounded-lg text-ink-3 hover:bg-raised hover:text-ink">
+                  <IconMore className="h-4 w-4" />
+                </button>
+                <button onClick={closeThread} aria-label={`Close chat with ${active.handle}`} title="close (esc)"
+                        className="hidden h-9 w-9 place-items-center rounded-lg text-ink-3 hover:bg-raised hover:text-ink sm:grid">
+                  <IconClose className="h-4 w-4" />
+                </button>
+              </div>
+              {picker && (
+                <PlayPicker handle={active.handle} onClose={() => setPicker(false)}
+                            onInvite={(k, o) => invite(k, o)} />
+              )}
               {menu && (
                 <div role="menu" aria-label={`Options for ${active.handle}`}
                      onKeyDown={(e) => { if (e.key === "Escape") setMenu(false); }}
@@ -385,12 +436,7 @@ export default function Circle() {
                                 bg-surface p-1.5 shadow-xl">
                   {!confirmBlock ? (
                     <>
-                      {games && threadInvites.length === 0 && (
-                        <MenuItem autoFocus onClick={() => void invite()}>
-                          invite to constellations
-                        </MenuItem>
-                      )}
-                      <MenuItem autoFocus={!games || threadInvites.length > 0}
+                      <MenuItem autoFocus
                                 onClick={() => { setMenu(false); setReport({}); }}>
                         report {active.handle}
                       </MenuItem>
@@ -587,8 +633,8 @@ function OptInGate({ onJoin, error, games }: { onJoin: () => void; error: string
         <button className="btn-primary" onClick={onJoin}>Join the circle</button>
       </div>
 
-      {/* astralis and solo games need nobody else, so they do not wait on joining */}
-      {games && <ConstellationsPanel className="card mt-10 p-5" />}
+      {/* astralis, solo and the puzzles need nobody else, so they do not wait on joining */}
+      {games && <PlayLink className="mt-10" />}
     </div>
     </div>
   );
@@ -596,15 +642,19 @@ function OptInGate({ onJoin, error, games }: { onJoin: () => void; error: string
 
 const msg = (e: unknown) => userMessage(e);
 
-/** sm and up: decides where the constellations panel goes, so it mounts (and fetches) once */
-function useWide(): boolean {
-  const [wide, setWide] = useState(false);
-  useEffect(() => {
-    const q = window.matchMedia("(min-width: 640px)");
-    const on = () => setWide(q.matches);
-    on();
-    q.addEventListener("change", on);
-    return () => q.removeEventListener("change", on);
-  }, []);
-  return wide;
+/** games moved out of the circle; this is the signpost to them */
+function PlayLink({ className = "" }: { className?: string }) {
+  return (
+    <div className={className}>
+      <Link href="/play"
+            className="flex items-center gap-2.5 rounded-xl border border-line bg-surface/70 px-3 py-2.5 text-left
+                       transition-colors duration-150 hover:border-line-2 hover:bg-raised/60">
+        <IconPlay className="h-4 w-4 shrink-0 text-violet-2" />
+        <span className="min-w-0 flex-1">
+          <span className="block font-mono text-[.75rem] text-ink">games live in play</span>
+          <span className="block font-mono text-[.5625rem] text-ink-3">your games, the week&apos;s board, and new ones</span>
+        </span>
+      </Link>
+    </div>
+  );
 }

@@ -60,7 +60,7 @@ export default function Leaderboard({ refreshKey = 0 }: { refreshKey?: number })
             </p>
           )}
           <p className="mt-1 font-mono text-[.5625rem] leading-relaxed text-ink-3">
-            resets every Monday. finishing a game with someone earns 1 point, a win earns 3.
+            resets every Monday. a game finished with someone earns 1 point, a draw 2, a win 3.
           </p>
         </>
       )}

@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { useMe } from "@/components/AppGate";
 import {
-  IconAstralis, IconCircle, IconNotes, IconPractice, IconYou,
+  IconAstralis, IconCircle, IconNotes, IconPlay, IconPractice, IconYou,
 } from "@/components/icons";
 import { api } from "@/lib/api";
 import { useEvent, useEventsConnected } from "@/lib/events";
@@ -50,6 +51,7 @@ function useUnread(): number {
 const NAV = [
   { href: "/chat",      label: "Astralis",  Icon: IconAstralis },
   { href: "/circle",    label: "Circle",    Icon: IconCircle },
+  { href: "/play",      label: "Play",      Icon: IconPlay },
   { href: "/resources", label: "Practices", Icon: IconPractice },
   { href: "/notes",     label: "Notes",     Icon: IconNotes },
   { href: "/settings",  label: "You",       Icon: IconYou },
@@ -57,7 +59,7 @@ const NAV = [
 
 /**
  * The module switcher. A narrow icon rail on desktop, a bottom bar on mobile —
- * same five destinations, same order, so the mental map does not change with
+ * same destinations (play only when games are on), same order, so the mental map does not change with
  * the viewport.
  *
  * `unread` is surfaced here rather than inside Circle because the whole point
@@ -66,6 +68,8 @@ const NAV = [
 export default function Rail() {
   const path = usePathname();
   const unread = useUnread();
+  const { me } = useMe();
+  const nav = me.games ? NAV : NAV.filter((n) => n.href !== "/play");
 
   return (
     <nav
@@ -74,7 +78,7 @@ export default function Rail() {
                  max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:border-t max-md:px-2 max-md:py-1.5
                  md:w-[4.5rem] md:flex-col md:items-center md:border-r md:py-3"
     >
-      {NAV.map(({ href, label, Icon }) => {
+      {nav.map(({ href, label, Icon }) => {
         const active = path.startsWith(href);
         const badge = href === "/circle" && unread > 0;
         return (
@@ -82,8 +86,8 @@ export default function Rail() {
             key={href}
             href={href}
             aria-current={active ? "page" : undefined}
-            className={`group relative flex flex-1 flex-col items-center gap-1 rounded-lg
-                        px-2 py-2 transition-colors duration-150 ease-swift md:flex-none md:w-14
+            className={`group relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg
+                        px-0.5 py-2 transition-colors duration-150 ease-swift md:flex-none md:w-14 md:px-2
                         ${active ? "bg-raised text-violet-2" : "text-ink-3 hover:bg-raised/60 hover:text-ink-2"}`}
           >
             <span className="relative">
@@ -95,7 +99,7 @@ export default function Rail() {
                 </span>
               )}
             </span>
-            <span className="font-mono text-[.5625rem] uppercase tracking-[.1em]">{label}</span>
+            <span className="max-w-full truncate font-mono text-[.5625rem] uppercase tracking-[.1em] max-md:tracking-[.04em]">{label}</span>
             {active && (
               <span aria-hidden
                     className="absolute bg-violet max-md:inset-x-3 max-md:top-0 max-md:h-px

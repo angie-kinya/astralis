@@ -39,3 +39,6 @@ requests.http
 # evals: run files are regenerated per commit; results.csv is the tracked history
 services/evals/runs/*.jsonl
 services/evals/judged/*.json
+
+# a local reference archive from another project (contains k8s secrets); never commit
+ather.zip

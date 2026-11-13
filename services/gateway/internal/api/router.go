@@ -144,10 +144,12 @@ func (s *Server) Router() *gin.Engine {
 		c.PUT("/notes/:id", s.handleSaveNote)
 		c.DELETE("/notes/:id", s.handleDeleteNote)
 
-		// constellations. behind a flag until it has had a quiet week in beta;
-		// unregistered rather than refused, so a disabled game is a plain 404
+		// games, every kind. behind a flag until they have had a quiet week in
+		// beta; unregistered rather than refused, so a disabled game is a plain 404
 		if s.cfg.GamesEnabled {
 			c.POST("/peers/:id/invites", s.handleSendInvite)
+			c.GET("/games/catalog", s.handleCatalog)
+			c.GET("/games/progress", s.handleProgress)
 			c.POST("/games", s.handleCreateGame)
 			c.GET("/games/invites", s.handleListInvites)
 			c.POST("/games/invites/:id/accept", s.handleAcceptInvite)

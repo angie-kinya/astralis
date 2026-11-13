@@ -16,11 +16,15 @@ A quiet place to think about work stress and burnout.
   when relevant, listed in Settings under *What Astralis remembers*, each deletable
 - **Circle:** optional, anonymous peer messaging in real time; delete, block and report;
   only your chosen name is ever shown
-- **Constellations:** a three-minute, turn-based game (dots and boxes on a 4×4 star field),
-  behind `GAMES_ENABLED`. Play someone from the Circle, play Astralis (a deterministic Go
-  opponent, no model), or play solo on one device. The leaderboard counts only games
-  between people, is opt-in, resets every Monday and gives points for finishing as well as
-  winning; no streaks, no loss counts, and the agent never mentions it
+- **Play** (behind `GAMES_ENABLED`), three quiet games in one hub:
+  - *Constellations*: dots and boxes across five skies, 3×3 to 7×7, one shaped like Orion;
+    play someone from the Circle, Astralis (a deterministic Go opponent, no model) or solo.
+    Skies open by finishing, not winning
+  - *Words*: a Wordle-style daily and practice puzzle across calm, astronomy, mythology, tech
+    and anime banks, in classic, anagram and mystery modes; free hints; duels with a friend
+  - *Sudoku*: unique-solution puzzles from a 6×6 mini to hard 9×9; no timer, no mistake count
+  - the weekly board counts only games between people, is opt-in, resets every Monday and
+    gives points for finishing as well as winning; no streaks, and the agent never mentions it
 - **Practices, reading and helplines**, and a private **notepad** no model ever reads
 - **Sign-in by email code** only; your email is never visible to other users
 
@@ -65,9 +69,11 @@ agent's truthful progress ("reading 2 studies"). Replies are not token-streamed 
 the verifier has to see the whole reply before anyone does. One API container makes the
 in-memory hub enough; a second one would back it with Postgres `LISTEN/NOTIFY`.
 
-**Constellations.** The rules are a pure, value-typed engine (`internal/game`) with table tests
-and a fuzzer (`go test -fuzz=FuzzRandomGames ./internal/game`) proving every legal game ends
-with all nine boxes owned. The server is authoritative: the client sends only an edge number,
+**Games.** Every game is a pure engine behind one interface (`internal/game/engine.go`):
+no clock, no io, all randomness from a seed, so daily puzzles match for everyone and every
+engine is fuzzed (Constellations at every level; Words and Sudoku also prove the answer never
+appears in a player's view before the end). Store and API only see the interface; a new game
+is a package and one registry line. The server is authoritative: the client sends only a move,
 and each move is saved under an optimistic lock on `games.version`, so two tabs or two fast
 clicks can never both land (the loser gets `409` and refetches). Invites check opt-in and
 blocks in the same statement as messages; one pending invite per pair is a unique index.
