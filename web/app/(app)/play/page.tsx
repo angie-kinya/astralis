@@ -89,9 +89,11 @@ export default function PlayPage() {
         <section aria-labelledby="points-title" className="mt-4 px-1 pb-4">
           <h2 id="points-title" className="label">how points work</h2>
           <p className="mt-1.5 max-w-measure font-mono text-[.6875rem] leading-relaxed text-ink-3">
-            points come only from games with people in the circle: finishing earns 1, a shared sky (a draw) 2 each,
-            a win 3. games with astralis and on your own are just for you and never count. the board starts fresh
-            every Monday.
+            with someone in the circle: finishing earns 1, a shared sky (a draw) 2 each, a win 3. with astralis:
+            finishing 1, a win 2. words: finishing 1, solving 2, and 1 more for today&apos;s puzzle. sudoku: solving
+            earns its level (mini 1 up to hard 4), and 1 more for today&apos;s. practice (astralis and extra puzzles)
+            adds up to 10 points a day. playing both colours on your own is just practice and earns none. the board
+            starts fresh every Monday, and there are no streaks.
           </p>
         </section>
       </div>

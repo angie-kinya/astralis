@@ -404,9 +404,11 @@ func TestPuzzleAndDuelViews(t *testing.T) {
 	solo.State, _ = json.Marshal(fakeState{Done: [2]bool{true, true}, Solved: true})
 	settle(fakePuzzle{}, &solo)
 	require.Equal(t, "finished", solo.Status)
-	require.Nil(t, solo.Winner)
+	require.Equal(t, alice, *solo.Winner, "a solved puzzle names its player, which is how points tell solved from finished")
 	require.Equal(t, "solved", *view(t, solo, alice).Result)
 	solo.State, _ = json.Marshal(fakeState{Done: [2]bool{true, true}})
+	settle(fakePuzzle{}, &solo)
+	require.Nil(t, solo.Winner, "finished without solving earns no winner")
 	require.Equal(t, "unsolved", *view(t, solo, alice).Result)
 
 	duel := store.GameRow{ID: "d", Kind: "fake", Mode: "peer", PlayerA: alice, PlayerB: strp(bruno),

@@ -210,9 +210,9 @@ export default function GameView({ game, onGame }: { game: Game; onGame: (g: Gam
   function headline(): string {
     if (game.status === "abandoned") return "this game went quiet";
     if (solo) return "every square is closed";
-    if (game.result === "draw") return game.mode === "peer" ? "a shared sky: +2 points" : "a shared sky";
+    if (game.result === "draw") return game.mode === "peer" ? "a shared sky: +2 points" : "a shared sky: +1 point";
     if (game.mode === "astralis") {
-      return game.result === "won" ? "you closed more squares this time" : "astralis closed more squares this time";
+      return game.result === "won" ? "you closed more squares: +2 points" : "astralis closed more this time: +1 point";
     }
     return game.result === "won" ? "a win: +3 points" : "you finished: +1 point";
   }
@@ -221,7 +221,7 @@ export default function GameView({ game, onGame }: { game: Game; onGame: (g: Gam
     if (game.status === "abandoned") return "A day passed without a move, so it was set down. Nothing is lost.";
     if (solo) return `Violet ${mine}, cyan ${theirs}. Both of them were you.`;
     if (game.result === "draw" && game.mode === "astralis") return `${mine} squares each. An even night, which is a nice way for one to end.`;
-    if (game.mode === "astralis") return "Games with Astralis are just for you. They never touch the weekly board.";
+    if (game.mode === "astralis") return "Games with Astralis count towards your week, up to 10 practice points a day.";
     return `Thank you for playing with ${game.peerHandle}. Every finished game counts this week.`;
   }
 }

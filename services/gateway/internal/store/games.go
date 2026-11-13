@@ -500,29 +500,58 @@ type MyPoints struct {
 	OptedIn bool `json:"optedIn"`
 }
 
-// weekPoints is 3 for a win, 2 each for a draw and 1 for finishing, peer games
-// of every kind, over the week so far. a finished peer game with no winner is
-// a draw: the winner column is only ever cleared by a draw, as deleting a
-// player deletes the game. weeks start on Monday in Nairobi time, whatever the
-// server's zone
+// weekPoints scores the week so far (from Monday, Nairobi time). every kind of
+// play counts, weighted so playing people still matters most:
+//
+//	with someone   win 3, shared sky (draw) 2, finish 1
+//	vs astralis    win 2, finish 1
+//	words          solved 2, finished 1; +1 for solving the daily
+//	sudoku         solved: its level (mini 1 .. hard 4); +1 for the daily
+//	solo sky       0: one person playing both colours is practice
+//
+// practice (astralis, and puzzles that are not the daily) is capped at
+// practiceCap points per person per day, so a quick run of games cannot
+// outweigh a real game with someone. a finished peer game with no winner is a
+// draw: the winner column is only ever cleared by a draw. for solo puzzles
+// winner is the player exactly when they solved it (settle in api/games.go).
+// pts yields (uid, p, n): points, and how many games they came from
 const weekPoints = `
 	WITH week AS (
-	  SELECT g.player_a, g.player_b, g.winner FROM games g
-	  WHERE g.status = 'finished' AND g.mode = 'peer'
+	  SELECT g.kind, g.mode, g.level, g.daily_key, g.player_a, g.player_b, g.winner,
+	         (g.updated_at AT TIME ZONE 'Africa/Nairobi')::date AS day
+	  FROM games g
+	  WHERE g.status = 'finished'
 	    AND g.updated_at >= date_trunc('week', now() AT TIME ZONE 'Africa/Nairobi') AT TIME ZONE 'Africa/Nairobi'
-	), pts AS (
-	  SELECT player_a AS uid,
-	         CASE WHEN winner IS NULL THEN 2 WHEN winner = player_a THEN 3 ELSE 1 END AS p FROM week
+	), scored AS (
+	  SELECT player_a AS uid, CASE WHEN winner IS NULL THEN 2 WHEN winner = player_a THEN 3 ELSE 1 END AS p,
+	         false AS practice, day FROM week WHERE mode = 'peer'
 	  UNION ALL
-	  SELECT player_b,
-	         CASE WHEN winner IS NULL THEN 2 WHEN winner = player_b THEN 3 ELSE 1 END      FROM week
+	  SELECT player_b, CASE WHEN winner IS NULL THEN 2 WHEN winner = player_b THEN 3 ELSE 1 END,
+	         false, day FROM week WHERE mode = 'peer'
+	  UNION ALL
+	  SELECT player_a, CASE WHEN winner = player_a THEN 2 ELSE 1 END,
+	         true, day FROM week WHERE mode = 'astralis'
+	  UNION ALL
+	  SELECT player_a,
+	         CASE WHEN kind = 'sudoku' THEN level
+	              WHEN winner = player_a THEN 2 ELSE 1 END
+	         + CASE WHEN daily_key IS NOT NULL AND winner = player_a THEN 1 ELSE 0 END,
+	         daily_key IS NULL, day
+	  FROM week WHERE mode = 'solo' AND kind IN ('words', 'sudoku')
+	), pts AS (
+	  SELECT uid, p, 1 AS n FROM scored WHERE NOT practice
+	  UNION ALL
+	  SELECT uid, LEAST(sum(p), ` + practiceCap + `)::int, count(*)::int FROM scored WHERE practice GROUP BY uid, day
 	)`
+
+// practiceCap is the most practice can add to someone's points in one day
+const practiceCap = "10"
 
 // Leaderboard is the opted-in top 20, plus the viewer's own tally, which they
 // see whether or not they have chosen to be listed
 func (s *Store) Leaderboard(ctx context.Context, userID string) ([]LeaderRow, MyPoints, error) {
 	rows, err := s.pool.Query(ctx, weekPoints+`
-		SELECT u.handle, sum(p)::int AS points, count(*)::int AS games, u.id = $1::uuid
+		SELECT u.handle, sum(p)::int AS points, sum(n)::int AS games, u.id = $1::uuid
 		FROM pts JOIN users u ON u.id = pts.uid
 		WHERE u.leaderboard_opt_in AND u.handle IS NOT NULL
 		GROUP BY u.id, u.handle
@@ -547,7 +576,7 @@ func (s *Store) Leaderboard(ctx context.Context, userID string) ([]LeaderRow, My
 	var me MyPoints
 	err = s.pool.QueryRow(ctx, weekPoints+`
 		SELECT COALESCE((SELECT sum(p) FROM pts WHERE uid = $1::uuid), 0)::int,
-		       (SELECT count(*) FROM pts WHERE uid = $1::uuid)::int,
+		       COALESCE((SELECT sum(n) FROM pts WHERE uid = $1::uuid), 0)::int,
 		       (SELECT leaderboard_opt_in FROM users WHERE id = $1::uuid)`, userID).
 		Scan(&me.Points, &me.Games, &me.OptedIn)
 	return top, me, err

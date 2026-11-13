@@ -272,8 +272,9 @@ func botReplies(e game.Engine, st game.State, seed uint64, o game.Options) (game
 
 // settle sets status and winner from the engine's result. in astralis there is
 // no second user to name, so winner is the person when they win and NULL when
-// astralis does; solo and draws never have one, which is also how the
-// leaderboard tells a draw
+// astralis does. a solo puzzle names the player only when they solved it, which
+// is how the weekly points tell solved from finished. solo constellations and
+// draws never have one, which is also how the leaderboard tells a draw
 func settle(e game.Engine, g *store.GameRow) {
 	r := e.Result(g.State)
 	if !r.Over {
@@ -282,7 +283,11 @@ func settle(e game.Engine, g *store.GameRow) {
 	g.Status = "finished"
 	g.Winner = nil
 	switch {
-	case g.Mode == "solo", r.Draw:
+	case g.Mode == "solo":
+		if r.Solved {
+			g.Winner = &g.PlayerA
+		}
+	case r.Draw:
 	case r.Winner == 1:
 		g.Winner = &g.PlayerA
 	case r.Winner == 2 && g.Mode == "peer":
