@@ -57,7 +57,7 @@ check: lint test  ## What CI runs. Run it before you push.
 
 # ------------------------------------------------------------ evals (needs `make api` running in development)
 EVALS = services/evals
-eval:       ## Replay the 30 scenarios, score them, gate against the previous run
+eval:       ## Replay the 36 scenarios, score them, gate against the previous run
 	cd $(EVALS) && python run.py && \
 	  new=$$(ls -t runs/*.jsonl | head -1); old=$$(ls -t runs/*.jsonl | sed -n 2p); \
 	  python gate.py $$new $${old:+--baseline $$old}

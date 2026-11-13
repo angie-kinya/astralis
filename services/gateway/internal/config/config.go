@@ -48,7 +48,7 @@ type Config struct {
 	// lint (AGENT_REPAIR, default true). false = log-only: violations recorded, nothing revised
 	AgentRepair bool
 	// AgentVariants are the voices the bandit chooses between (AGENT_VARIANTS,
-	// default "steady,terse"). one name turns the bandit off
+	// default "warm,curious"). one name turns the bandit off
 	AgentVariants []string
 	// MinSimilarity is the cosine similarity below which a passage is too loosely related to show the model
 	MinSimilarity float64
@@ -101,7 +101,7 @@ func Load() (*Config, error) {
 		AgentRepair:         get("AGENT_REPAIR", "true") != "false",
 		GamesEnabled:        get("GAMES_ENABLED", "") == "true",
 	}
-	for _, v := range strings.Split(get("AGENT_VARIANTS", "steady,terse"), ",") {
+	for _, v := range strings.Split(get("AGENT_VARIANTS", "warm,curious"), ",") {
 		if v = strings.TrimSpace(v); v != "" {
 			c.AgentVariants = append(c.AgentVariants, v)
 		}

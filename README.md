@@ -50,9 +50,9 @@ The rule for v2: **the prompt says who Astralis is; Go decides how it behaves.**
   raise `mentions`). Flagged messages never reach the extractor.
 - **Trajectory.** `turn_signals` is finally read back: 7- vs 21-day exhaustion and recurring
   demands let Astralis say "this is the third week the manager has come up", once.
-- **Variants.** Two voices that differ in one dimension (terseness), assigned per session by
+- **Variants.** Two voices that differ in one dimension (question cadence: warm vs curious), assigned per session by
   Thompson sampling on ratings and the end-of-session card.
-- **Evals.** `services/evals` replays 30 scripted scenarios and gates agent changes on
+- **Evals.** `services/evals` replays 36 scripted scenarios and gates agent changes on
   safety routing, stylometric AI-tell metrics and a pairwise judge (`make eval`).
 
 No model holds a key, calls a tool or touches the database, and none is trained on

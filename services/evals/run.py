@@ -1,6 +1,6 @@
 """replay every scenario through the real agent and write one jsonl row per turn.
 
-    API_URL=http://localhost:8080 python run.py [--variant terse] [--only vent_monday,...]
+    API_URL=http://localhost:8080 python run.py [--variant curious] [--only vent_monday,...]
 
 needs the api in ENV=development (it registers POST /api/v1/dev/turn only there).
 each scenario gets a fresh scratch user, so facts and trajectory never leak between runs.
@@ -38,7 +38,7 @@ def play(client: httpx.Client, sc: dict, variant: str | None) -> list[dict]:
         session = out.get("sessionId", session)
         rows.append({
             "scenario": sc["id"], "kind": sc["kind"], "expect": sc["expect"],
-            "crisis_from": sc.get("crisis_from"), "turn": i, "user": msg,
+            "crisis_from": sc.get("crisis_from"), "listen_from": sc.get("listen_from"), "turn": i, "user": msg,
             "users_so_far": sc["turns"][:i], "subjects": subjects,
             "reply": out.get("reply", ""), "crisis": bool(out.get("crisis")),
             "cited": len(out.get("sources") or []), "run": out.get("run"),

@@ -20,6 +20,19 @@ STOCK = re.compile(
 DASH = re.compile(r" [–-] |—")
 _SENT = re.compile(r"(?<=[.!?])\s+")
 
+# lint.go's jargon list and plain_words rule, word for word
+JARGON = re.compile(
+    r"(?i)\b(mismatch(es)?|unsustainable|leverag(e|es|ed|ing)|paradigms?|"
+    r"optimi[sz](e|es|ed|ing|ation)|frameworks?|dressed up as|cognitive|holistic(ally)?|actionable|"
+    r"(set|setting|hold|holding|healthy|firm|clear) boundaries|hold(ing)? space)\b"
+)
+_LETTERS = re.compile(r"[a-z]+")
+_VOWELS = re.compile(r"[aeiouy]+")
+
+# shape.go's userAsked: a "?" or a leading question word. "when" and "where" are left
+# out because "when am I supposed to..." in a vent is rhetorical
+_QWORDS = {"what", "how", "why", "who", "are", "is", "do", "does", "can", "could", "would", "will", "should"}
+
 
 def words(s: str) -> list[str]:
     return s.split()
@@ -32,6 +45,37 @@ def sentences(s: str) -> list[str]:
 def opener(s: str) -> str:
     # first three lowercased words, exactly as lint.go's opener()
     return " ".join(s.lower().split()[:3])
+
+
+def letter_words(s: str) -> list[str]:
+    # the word list lint.go counts syllables over: runs of a-z in the lowercased text
+    return _LETTERS.findall(s.lower())
+
+
+def syllables(word: str) -> int:
+    # vowel groups minus a silent final e, exactly as lint.go's syllables()
+    n = len(_VOWELS.findall(word))
+    if n > 1 and word.endswith("e") and not word.endswith("le"):
+        n -= 1
+    return max(1, n)
+
+
+def long_words(s: str) -> tuple[int, int]:
+    ws = letter_words(s)
+    return sum(syllables(w) >= 4 for w in ws), len(ws)
+
+
+def plain_words(s: str) -> bool:
+    # false when a reply leans on long or technical words; one long word is never enough
+    long, total = long_words(s)
+    return not JARGON.search(s) and (long < 2 or long * 100 <= total * 8)
+
+
+def user_asked(s: str) -> bool:
+    if "?" in s:
+        return True
+    f = s.lower().split()
+    return len(f) > 1 and f[0].strip(".,!'\"") in _QWORDS
 
 
 def load_jsonl(path: str | Path) -> list[dict]:

@@ -44,6 +44,14 @@ func TestParseAnalysisDistrustsTheModel(t *testing.T) {
 	require.Equal(t, []string{"workload"}, an.Demands, "unknown and repeated tags are dropped")
 	require.Equal(t, -1.0, an.Valence, "valence is clamped")
 	require.Equal(t, "", an.SearchQuery)
+	require.Equal(t, "unclear", an.WantsAdvice, "a missing wants_advice is unclear, never a silent no")
+
+	an, err = parseAnalysis(`{"intent":"vent","wants_advice":"no"}`)
+	require.NoError(t, err)
+	require.Equal(t, "no", an.WantsAdvice)
+	an, err = parseAnalysis(`{"intent":"vent","wants_advice":"never"}`)
+	require.NoError(t, err)
+	require.Equal(t, "unclear", an.WantsAdvice)
 
 	_, err = parseAnalysis(`{"intent":"diagnose"}`)
 	require.Error(t, err, "an unknown intent is a failed analysis, not a guess")

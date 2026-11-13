@@ -15,6 +15,47 @@ var stock = regexp.MustCompile(`(?i)\b(it sounds like|i hear you|that'?s (comple
 // a spaced hyphen or en dash, or an em dash anywhere
 var dash = regexp.MustCompile(` [–-] |—`)
 
+// jargon is words that make a reply sound like a report or a therapist.
+// short on purpose: every entry has an everyday way to say the same thing.
+// "boundaries" only counts in its therapy-speak pairings, not on its own
+var jargon = regexp.MustCompile(`(?i)\b(mismatch(es)?|unsustainable|leverag(e|es|ed|ing)|paradigms?|` +
+	`optimi[sz](e|es|ed|ing|ation)|frameworks?|dressed up as|cognitive|holistic(ally)?|actionable|` +
+	`(set|setting|hold|holding|healthy|firm|clear) boundaries|hold(ing)? space)\b`)
+
+var (
+	letters    = regexp.MustCompile(`[a-z]+`)
+	vowelGroup = regexp.MustCompile(`[aeiouy]+`)
+)
+
+// syllables is the usual vowel-group estimate: count runs of vowels and drop
+// a silent final e. it is wrong on some words, but evenly wrong, which is
+// all a rate needs. common.py carries the same function
+func syllables(word string) int {
+	n := len(vowelGroup.FindAllString(word, -1))
+	if n > 1 && strings.HasSuffix(word, "e") && !strings.HasSuffix(word, "le") {
+		n--
+	}
+	return max(1, n)
+}
+
+// longWords counts words of four or more syllables, out of all words
+func longWords(s string) (long, total int) {
+	for _, w := range letters.FindAllString(strings.ToLower(s), -1) {
+		total++
+		if syllables(w) >= 4 {
+			long++
+		}
+	}
+	return long, total
+}
+
+// plainWords is false when a reply leans on long or technical words. one
+// long word is never enough, so "everything okay?" in a short reply passes
+func plainWords(s string) bool {
+	long, total := longWords(s)
+	return !jargon.MatchString(s) && (long < 2 || long*100 <= total*8)
+}
+
 func opener(s string) string {
 	w := strings.Fields(strings.ToLower(s))
 	return strings.Join(w[:min(3, len(w))], " ")
@@ -24,8 +65,10 @@ func opener(s string) string {
 // prev = earlier assistant replies in this session, oldest first
 func Lint(reply string, s Shape, prev []string) []string {
 	v := []string{}
+	// a missing question on invite is never a violation: we invite, we
+	// never force, and a forced question is the interview feel to avoid
 	q := strings.Count(reply, "?")
-	if q > 1 || (q == 1 && !s.MayAsk) {
+	if q > 1 || (q == 1 && s.Ask == AskForbid) {
 		v = append(v, "question")
 	}
 	if n := len(strings.Fields(reply)); n > s.Words*16/10 {
@@ -36,6 +79,9 @@ func Lint(reply string, s Shape, prev []string) []string {
 	}
 	if dash.MatchString(reply) {
 		v = append(v, "dash")
+	}
+	if !plainWords(reply) {
+		v = append(v, "plain_words")
 	}
 	if op := opener(reply); op != "" {
 		for _, p := range prev[max(0, len(prev)-5):] {
@@ -54,6 +100,7 @@ var repairHints = map[string]string{
 	"length":          "cut it to about the target length",
 	"stock_phrase":    "replace stock reassurance with something specific to what they said",
 	"dash":            "use commas or full stops instead of dashes",
+	"plain_words":     "use everyday words, the way you'd say it out loud",
 	"repeated_opener": "start differently from your recent replies",
 }
 

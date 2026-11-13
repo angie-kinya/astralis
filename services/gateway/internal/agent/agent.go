@@ -51,7 +51,7 @@ type Config struct {
 	// Repair allows one revision pass when the first draft fails the style
 	// lint. off = log-only mode: violations are still recorded on every run
 	Repair bool
-	// Variants are the voices the bandit chooses between. empty = steady only
+	// Variants are the voices the bandit chooses between. empty = the default only
 	Variants []string
 }
 
@@ -229,11 +229,15 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 
 	// PLAN. pure Go
 	prev := assistantReplies(history)
+	asked := make([]bool, len(prev))
+	for i, r := range prev {
+		asked[i] = askedQuestion(r)
+	}
 	plan := Decide(an, aerr == nil, t.Content, Situation{
-		LastAsked: len(prev) > 0 && askedQuestion(prev[len(prev)-1]),
-		Pattern:   pattern,
-		Moved:     moved,
-		Variant:   variant,
+		Asked:   asked,
+		Pattern: pattern,
+		Moved:   moved,
+		Variant: variant,
 	})
 	run.Moves = plan.Moves
 
@@ -369,17 +373,17 @@ func (a *Agent) variant(ctx context.Context, sessionID string) string {
 		return a.cfg.Variants[0]
 	}
 	if v, err := a.store.SessionVariant(ctx, sessionID); err == nil && v != "" {
-		return v
+		return resolveVariant(v) // a session from before a rename keeps working
 	}
 	stats, err := a.store.VariantStats(ctx)
 	if err != nil {
 		stats = nil // explore uniformly
 	}
 	v, err := a.store.ClaimSessionVariant(ctx, sessionID, PickVariant(stats, a.cfg.Variants, minRatingsEach))
-	if err != nil || v == "" {
+	if err != nil {
 		return DefaultVariant
 	}
-	return v
+	return resolveVariant(v)
 }
 
 // progress is nil-safe: a turn without a listener just runs
