@@ -69,18 +69,21 @@ export default function SudokuStart() {
       <fieldset>
         <legend className="label mb-2">size and depth</legend>
         <div role="radiogroup" aria-label="size and depth" onKeyDown={onKeyDown}
-             className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+             className="grid grid-cols-2 gap-2">
           {levels.map((l) => {
             const on = l.level === level;
             return (
               <button key={l.level} type="button" role="radio" aria-checked={on} data-level={l.level}
                       tabIndex={on ? 0 : -1} onClick={() => setLevel(l.level)}
-                      className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors duration-150
+                      className={`flex min-w-0 items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors duration-150
                                   ${on ? "border-violet/60 bg-violet/10" : "border-line bg-surface/60 hover:border-line-2 hover:bg-raised/60"}`}>
                 <MiniGrid size={l.size} on={on} />
-                <span>
+                <span className="min-w-0">
                   <span className={`block font-mono text-[.8125rem] ${on ? "text-ink" : "text-ink-2"}`}>{l.name}</span>
                   <span className="block font-mono text-[.625rem] text-ink-3">{l.size} by {l.size}</span>
+                  {BLURB[l.level] && (
+                    <span className="mt-1 block font-sans text-[.8125rem] leading-snug text-ink-2">{BLURB[l.level]}</span>
+                  )}
                 </span>
               </button>
             );
@@ -106,6 +109,15 @@ export default function SudokuStart() {
 }
 
 /** a tiny drawing of the grid's boxes, so 6 by 6 and 9 by 9 read at a glance */
+// a line per level, so the cards fill their column and say what each one feels
+// like, the way the words topics do
+const BLURB: Record<number, string> = {
+  1: "a small grid for a short break",
+  2: "every next number can be found",
+  3: "a little more looking around",
+  4: "slow, patient, deeply absorbing",
+};
+
 function MiniGrid({ size, on }: { size: number; on: boolean }) {
   const cols = size === 6 ? 2 : 3, rows = 3;
   return (
