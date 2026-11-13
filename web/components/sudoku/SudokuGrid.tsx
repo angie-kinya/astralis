@@ -60,10 +60,14 @@ export default function SudokuGrid({
             // a given is never the mistake, so it keeps its ink and only shares the tint
             const marked = (bad || off) && !g;
             const mask = notes[i] ?? 0;
+            // a note of the selected digit stands out across the grid, so you can
+            // see every place that number might still go before you commit to one
+            const hint = !readOnly && sd !== "0" && d === "0" && (mask & (1 << Number(sd))) !== 0;
 
             const bg = sel ? "bg-g-sky/20"
               : bad || off ? "bg-g-rose/[.12]"
               : same ? "bg-g-teal/[.11]"
+              : hint ? "bg-g-teal/[.06]"
               : near ? "bg-g-sky/[.06]" : "";
             const ink = marked ? "text-g-rose font-medium" : g ? "text-ink font-medium" : "text-violet-2";
 
@@ -93,11 +97,18 @@ export default function SudokuGrid({
                     <span aria-hidden className="grid h-full w-full p-[8%] font-mono text-[clamp(.4375rem,1.9vw,.625rem)]
                                                  leading-none text-ink-3"
                           style={{ gridTemplateColumns: `repeat(${noteCols}, minmax(0, 1fr))` }}>
-                      {Array.from({ length: size }, (_, k) => (
-                        <span key={k} className="flex items-center justify-center">
-                          {mask & (1 << (k + 1)) ? k + 1 : ""}
-                        </span>
-                      ))}
+                      {Array.from({ length: size }, (_, k) => {
+                        const on = (mask & (1 << (k + 1))) !== 0;
+                        const lit = on && String(k + 1) === sd && !readOnly;
+                        return (
+                          <span key={k} className="flex items-center justify-center">
+                            {on && (lit
+                              ? <span className="grid aspect-square h-[1.6em] place-items-center rounded-full
+                                                 bg-g-teal/20 font-bold text-g-teal">{k + 1}</span>
+                              : k + 1)}
+                          </span>
+                        );
+                      })}
                     </span>
                   ) : null}
                 </button>
