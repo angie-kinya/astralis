@@ -77,7 +77,7 @@ export default function SudokuStart() {
                       tabIndex={on ? 0 : -1} onClick={() => setLevel(l.level)}
                       className={`flex min-w-0 items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors duration-150
                                   ${on ? "border-violet/60 bg-violet/10" : "border-line bg-surface/60 hover:border-line-2 hover:bg-raised/60"}`}>
-                <MiniGrid size={l.size} on={on} />
+                <MiniGrid size={l.size} on={on} accent={ACCENT[l.level] ?? "--violet-2"} />
                 <span className="min-w-0">
                   <span className={`block font-mono text-[.8125rem] ${on ? "text-ink" : "text-ink-2"}`}>{l.name}</span>
                   <span className="block font-mono text-[.625rem] text-ink-3">{l.size} by {l.size}</span>
@@ -118,13 +118,16 @@ const BLURB: Record<number, string> = {
   4: "slow, patient, deeply absorbing",
 };
 
-function MiniGrid({ size, on }: { size: number; on: boolean }) {
+// one gentle accent per level, on the icon only; the selected card keeps the violet selection
+const ACCENT: Record<number, string> = { 1: "--g-teal", 2: "--g-sky", 3: "--violet-2", 4: "--p-bot" };
+
+function MiniGrid({ size, on, accent }: { size: number; on: boolean; accent: string }) {
   const cols = size === 6 ? 2 : 3, rows = 3;
   return (
-    <span aria-hidden className={`grid h-6 w-6 shrink-0 gap-[2px] ${on ? "text-violet-2" : "text-ink-3"}`}
-          style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` }}>
+    <span aria-hidden className="grid h-6 w-6 shrink-0 gap-[2px]"
+          style={{ color: `rgb(var(${accent}))`, gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)` }}>
       {Array.from({ length: cols * rows }, (_, i) => (
-        <span key={i} className="rounded-[2px] border border-current opacity-70" />
+        <span key={i} className={`rounded-[2px] border border-current ${on ? "" : "opacity-70"}`} />
       ))}
     </span>
   );

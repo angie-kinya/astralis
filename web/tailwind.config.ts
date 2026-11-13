@@ -38,6 +38,11 @@ export default {
         cyan:      token("cyan"),
         // Care, caution, and the crisis card. Warm, never alarming red.
         amber:     token("amber"),
+        // the play section's accents, inside the games only: correct, selection, a mistake
+        "g-teal":    token("g-teal"),
+        "g-teal-ink":token("g-teal-ink"),
+        "g-sky":     token("g-sky"),
+        "g-rose":    token("g-rose"),
       },
       fontFamily: {
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],

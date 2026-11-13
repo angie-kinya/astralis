@@ -7,11 +7,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import NumberPad from "@/components/sudoku/NumberPad";
 import SudokuGrid from "@/components/sudoku/SudokuGrid";
 import {
-  LEVEL_NAME, type Notes, cellsOf, conflicts, dropNotes, isGiven, loadNotes, peers, saveNotes,
+  LEVEL_NAME, type Notes, cellsOf, conflicts, dropNotes, isGiven, loadNotes, norm, peers, saveNotes,
 } from "@/components/sudoku/logic";
 import { ApiError, type Game, type SudokuView, createGame, getGame, playMove, userMessage } from "@/lib/api";
 
-const QUIET = 600;  // ms after the last input before the grid is saved
+// ms after the last input before the grid is saved. short, so a wrong digit
+// turns red almost as it lands; a quick run of digits still rides one save
+const QUIET = 150;
 const DEPTH = 200;  // undo steps kept
 
 type Snap = { cells: string[]; notes: Notes };
@@ -20,13 +22,16 @@ type Snap = { cells: string[]; notes: Notes };
  * one sudoku, solo and untimed.
  *
  *  - this tab's grid is the truth while it is open. edits are saved as the
- *    whole grid, 600 ms after the last one, or at once when the grid is full
+ *    whole grid, 150 ms after the last one, or at once when the grid is full
  *    (the server is the only one who can say solved). one save runs at a
  *    time; edits made meanwhile ride the next one.
  *  - a newer game from outside (another tab, via the page) is taken only when
  *    nothing local is waiting to be saved; a 409 refetches and takes the
  *    server's grid.
- *  - repeats are tinted softly. there is no mistake count and no clock.
+ *  - a digit the server says is wrong, and any repeat, is marked rose with a
+ *    corner dot. the server's marks only hold for the value it saw: a cell
+ *    changed here since the last save drops its mark until the next one.
+ *    there is no mistake count and no clock.
  *  - pencil notes never leave the browser: localStorage per game id
  */
 export default function SudokuGame({ game, onGame }: { game: Game; onGame: (g: Game) => void }) {
@@ -211,6 +216,14 @@ export default function SudokuGame({ game, onGame }: { game: Game; onGame: (g: G
   }
 
   const bad = useMemo(() => conflicts(cells, size, boxRows, boxCols), [cells, size, boxRows, boxCols]);
+  // the server's wrong marks, kept only where the cell still holds what it judged
+  const wrong = useMemo(() => {
+    const w = new Set<number>();
+    for (const i of view.wrong ?? []) {
+      if (!isGiven(view, i) && cells[i] !== "0" && cells[i] === norm(view.entries[i])) w.add(i);
+    }
+    return w;
+  }, [view, cells]);
   const placed = useMemo(() => {
     const p = Array<number>(size + 1).fill(0);
     cells.forEach((d) => { if (d !== "0") p[Number(d)]! += 1; });
@@ -242,12 +255,15 @@ export default function SudokuGame({ game, onGame }: { game: Game; onGame: (g: G
       <section className="bubble mt-3 border-line bg-surface/80 !px-3 !py-4 sm:!px-5 sm:!py-5">
         <div data-sudoku-grid>
           <SudokuGrid size={size} boxRows={boxRows} boxCols={boxCols} cells={cells} given={given} notes={notes}
-                      selected={selected} conflicts={bad} readOnly={solved} focusTick={focusTick}
+                      selected={selected} conflicts={bad} wrong={wrong} readOnly={solved} glow={view.solved}
+                      focusTick={focusTick}
                       onSelect={(i) => setSelected(i)} />
         </div>
 
         <p role="status" aria-live="polite" className="mt-3 min-h-[1.25rem] text-center font-mono text-[.6875rem] text-ink-3">
-          {solved ? "" : bad.size ? "a number repeats in a row, column or box. it is tinted, take your time."
+          {solved ? "" : bad.size ? "a number repeats in a row, column or box. it is marked, take your time."
+            : wrong.size ? (wrong.size === 1 ? "one number doesn't fit where it is. it is marked, take your time."
+                                             : "a few numbers don't fit where they are. they are marked, take your time.")
             : filled === cells.length ? (saving ? "checking…" : "every cell is filled, but one is not quite right yet. look again, gently.")
             : notesMode ? "notes on: numbers go in small" : ""}
         </p>

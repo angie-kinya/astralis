@@ -67,16 +67,16 @@ export default function PlayPage() {
         {error && <p role="alert" className="mt-4 font-mono text-[.6875rem] text-amber">{error}</p>}
 
         <div className="mt-7 grid gap-3 md:grid-cols-2">
-          <GameCard id="constellations" title="constellations" glyph={<ConstellationGlyph className="h-4 w-4" />}
+          <GameCard id="constellations" title="constellations" accent="--violet-2" glyph={<ConstellationGlyph className="h-4 w-4" />}
                     blurb="Take turns joining stars. Close a square to keep it and draw again."
                     className="md:col-span-2">
             <ConstellationsStart />
           </GameCard>
-          <GameCard id="words" title="words" glyph={<WordsGlyph className="h-4 w-4" />}
+          <GameCard id="words" title="words" accent="--g-teal" glyph={<WordsGlyph className="h-4 w-4" />}
                     blurb="Find the hidden word. Hints are free and never cost you anything.">
             <WordsStart />
           </GameCard>
-          <GameCard id="sudoku" title="sudoku" glyph={<SudokuGlyph className="h-4 w-4" />}
+          <GameCard id="sudoku" title="sudoku" accent="--g-sky" glyph={<SudokuGlyph className="h-4 w-4" />}
                     blurb="Fill the grid so every row, column and box holds each number once.">
             <SudokuStart />
           </GameCard>
@@ -101,13 +101,16 @@ export default function PlayPage() {
   );
 }
 
-function GameCard({ id, title, glyph, blurb, className = "", children }: {
-  id: string; title: string; glyph: React.ReactNode; blurb: string; className?: string; children: React.ReactNode;
+// each game keeps one quiet accent, a tinted glyph and a top edge, and nothing louder
+function GameCard({ id, title, accent, glyph, blurb, className = "", children }: {
+  id: string; title: string; accent: string; glyph: React.ReactNode; blurb: string; className?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <section aria-labelledby={`${id}-title`} className={`game-pane p-4 sm:p-5 ${className}`}>
+    <section aria-labelledby={`${id}-title`} className={`game-pane p-4 sm:p-5 ${className}`}
+             style={{ borderTopColor: `rgb(var(${accent}) / .55)` }}>
       <h2 id={`${id}-title`} className="flex items-center gap-2 font-mono text-[.75rem] text-ink">
-        <span className="text-violet-2">{glyph}</span>
+        <span style={{ color: `rgb(var(${accent}))` }}>{glyph}</span>
         {title}
       </h2>
       <p className="mt-1 font-sans text-[.8125rem] leading-relaxed text-ink-3">{blurb}</p>

@@ -2,19 +2,20 @@ import type { CSSProperties } from "react";
 
 export type Mark = "correct" | "present" | "absent";
 
-// --p-you comes from the games block in globals.css; violet stands in until it exists.
-// correct is a solid fill, present a warm tint with a firm edge, absent recedes into the
-// pane. none of them is ever a dark slab on a dark ground
-const YOU = "rgb(var(--p-you, var(--violet)))";
+// --g-teal comes from the games block in globals.css. correct is a solid teal fill, present
+// a warm tint with a firm edge, absent recedes into the pane. none of them is ever a dark
+// slab on a dark ground
+export const TEAL = "rgb(var(--g-teal))";
 
 export const markStyle: Record<Mark, CSSProperties> = {
-  correct: { background: YOU, borderColor: YOU },
+  correct: { background: TEAL, borderColor: TEAL },
   present: { background: "rgb(var(--amber) / .2)", borderColor: "rgb(var(--amber) / .75)" },
   absent:  { background: "rgb(var(--raised))", borderColor: "rgb(var(--line))" },
 };
 
 export const markText: Record<Mark, string> = {
-  correct: "text-white",
+  // dark ink on the bright dark-theme teal, white on the deeper light-theme one
+  correct: "text-g-teal-ink",
   present: "text-ink",
   absent:  "text-ink-3",
 };

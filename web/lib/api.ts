@@ -351,4 +351,6 @@ export type SudokuView = {
   givens: string;
   entries: string;
   solved: boolean;
+  /** cells whose filled digit is not the solution's, as of these entries */
+  wrong?: number[];
 };

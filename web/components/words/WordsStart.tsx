@@ -78,7 +78,7 @@ export default function WordsStart() {
           the topic stays hidden until the end. part of the fun is working out where the word lives.
         </p>
       ) : (
-        <Picker label="topic" value={topic} onChange={setTopic} options={topics} cols="sm:grid-cols-2" />
+        <Picker label="topic" value={topic} onChange={setTopic} options={topics} cols="sm:grid-cols-2" accent={TOPIC_ACCENT} />
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -98,9 +98,16 @@ export default function WordsStart() {
   );
 }
 
+// a small dot per topic so the cards are told apart at a glance. topics the
+// client does not know yet simply go without
+const TOPIC_ACCENT: Record<string, string> = {
+  calm: "--g-teal", astronomy: "--violet-2", mythology: "--amber", tech: "--g-sky", anime: "--p-bot",
+};
+
 /** a radio group drawn as cards: arrows move between them, as a radio group should */
-function Picker({ label, value, onChange, options, cols }: {
+function Picker({ label, value, onChange, options, cols, accent }: {
   label: string; value: string; onChange: (v: string) => void; options: Choice[]; cols: string;
+  accent?: Record<string, string>;
 }) {
   function onKeyDown(e: React.KeyboardEvent) {
     const i = options.findIndex((o) => o.id === value);
@@ -123,7 +130,13 @@ function Picker({ label, value, onChange, options, cols }: {
                     tabIndex={on ? 0 : -1} onClick={() => onChange(o.id)}
                     className={`rounded-xl border px-3.5 py-2.5 text-left transition-colors duration-150
                                 ${on ? "border-violet/60 bg-violet/10" : "border-line bg-surface/60 hover:border-line-2 hover:bg-raised/60"}`}>
-              <span className={`block font-mono text-[.8125rem] ${on ? "text-ink" : "text-ink-2"}`}>{o.name}</span>
+              <span className={`flex items-center gap-2 font-mono text-[.8125rem] ${on ? "text-ink" : "text-ink-2"}`}>
+                {accent?.[o.id] && (
+                  <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full"
+                        style={{ background: `rgb(var(${accent[o.id]}))` }} />
+                )}
+                {o.name}
+              </span>
               {o.blurb && <span className="mt-0.5 block text-[.75rem] leading-snug text-ink-3">{o.blurb}</span>}
             </button>
           );

@@ -310,3 +310,26 @@ func BenchmarkGenerate(b *testing.B) {
 		})
 	}
 }
+
+func TestViewMarksWrongCells(t *testing.T) {
+	s := mustNew(t, 5, 1)
+	sec := secret(t, s)
+	empty := strings.IndexByte(sec.Givens, '0')
+	other := strings.IndexByte(sec.Givens[empty+1:], '0') + empty + 1
+	grid := []byte(sec.Givens)
+	grid[empty] = sec.Solution[empty]               // right
+	grid[other] = '1' + (sec.Solution[other]-'0')%6 // wrong: any other digit 1-6
+	mv, _ := json.Marshal(map[string]string{"grid": string(grid)})
+	next, err := Engine{}.Apply(s, 1, mv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := Engine{}.View(next, 1)
+	if w := v.(View).Wrong; len(w) != 1 || w[0] != other {
+		t.Fatalf("want only cell %d marked wrong, got %v", other, w)
+	}
+	b, _ := json.Marshal(v)
+	if strings.Contains(string(b), sec.Solution) {
+		t.Fatal("marking mistakes must not leak the solution")
+	}
+}

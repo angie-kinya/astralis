@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 
+import { TEAL } from "@/components/words/marks";
 import type { Game, WordsView } from "@/lib/api";
 
+// found: the answer in the same teal as a correct tile. not found: it is simply shown, in violet
 const YOU = "rgb(var(--p-you, var(--violet)))";
 
 /**
@@ -20,15 +22,15 @@ export default function WordsResult({ game, view, busy, onAnother }: {
   const them = game.peerHandle ?? "your friend";
 
   return (
-    <section className="card mt-5 animate-rise p-5 text-center" aria-live="polite">
+    <section className={`card mt-5 animate-rise p-5 text-center ${view.solved ? "g-glow" : ""}`} aria-live="polite">
       <p className="label">{view.solved ? "found" : "the word was"}</p>
       {view.answer && (
         <p className="mt-3 flex flex-wrap justify-center gap-1" aria-label={view.answer}>
           {view.answer.toUpperCase().split("").map((l, i) => (
             <span key={i} aria-hidden
-                  className="flex h-8 w-8 items-center justify-center rounded-md border font-mono text-[.9375rem]
-                             font-medium text-white"
-                  style={{ background: YOU, borderColor: YOU }}>
+                  className={`flex h-8 w-8 items-center justify-center rounded-md border font-mono text-[.9375rem]
+                              font-medium ${view.solved ? "text-g-teal-ink" : "text-white"}`}
+                  style={{ background: view.solved ? TEAL : YOU, borderColor: view.solved ? TEAL : YOU }}>
               {l}
             </span>
           ))}

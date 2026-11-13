@@ -56,6 +56,14 @@
     --p-them:   232 168  86;   /* amber, a person, 9.3:1 */
     --p-bot:    232 121 206;   /* orchid, astralis's eye, 7.3:1. never the violet you play in */
     --p-solo-b:  34 211 238;   /* cyan, solo's second colour, 10.6:1 */
+
+    /* games: a calm accent palette for the play section only, inside the
+       puzzles and lightly on the hub cards. violet stays the primary. each is
+       >= 4.5:1 on the pane, so it can carry a digit or a letter */
+    --g-teal:     45 212 191;  /* correct, solved. 10.3:1 */
+    --g-teal-ink:  8   7  14;  /* text on a teal fill, 10.8:1 */
+    --g-sky:      96 165 250;  /* selection. 7.6:1 */
+    --g-rose:    248 113 113;  /* a mistake. 6.9:1, 6.0:1 on its own tint */
   }
 
   /* Light is daylight through lavender glass, not a white page: a tinted
@@ -96,6 +104,11 @@
     --p-them:   166  94  12;   /* 4.8:1 */
     --p-bot:    176  52 150;   /* 5.3:1 */
     --p-solo-b:   8 112 136;   /* 5.5:1 */
+
+    --g-teal:     13 118 104;  /* 5.2:1 */
+    --g-teal-ink: 255 255 255; /* white on teal, 5.5:1 */
+    --g-sky:      37  99 210;  /* 5.3:1 */
+    --g-rose:    184  28  48;  /* 6.1:1, 5.1:1 on its own tint, 4.7:1 on the selection */
   }
 
   html { -webkit-text-size-adjust: 100%; }
@@ -457,6 +470,17 @@
   .game-box-fill { fill: rgb(var(--p)); }
   .game-box-ring { fill: none; stroke: rgb(var(--p)); stroke-width: calc(2px * var(--u)); }
   @keyframes game-fade { from { opacity: 0; } to { opacity: 1; } }
+
+  /* a solved puzzle: a soft teal ring and glow that settles in once */
+  .g-glow {
+    border-color: rgb(var(--g-teal) / .5);
+    box-shadow: 0 0 0 1px rgb(var(--g-teal) / .28), 0 0 32px -8px rgb(var(--g-teal) / .45);
+    animation: g-glow-in 1.2s ease-out both;
+  }
+  [data-theme="light"] .g-glow {
+    box-shadow: 0 0 0 1px rgb(var(--g-teal) / .22), 0 10px 32px -12px rgb(var(--g-teal) / .4);
+  }
+  @keyframes g-glow-in { from { box-shadow: 0 0 0 0 transparent; } }
 }
 
 .gp-you    { --p: var(--p-you); }
@@ -484,6 +508,6 @@
 
   /* the board stays still: no twinkle, lines and squares simply appear, and the
      last move keeps a steady outline instead of breathing */
-  .game-star, .game-line, .game-box, .game-pulse { animation: none !important; }
+  .game-star, .game-line, .game-box, .game-pulse, .g-glow { animation: none !important; }
   .game-pulse { stroke-opacity: .32; stroke-width: calc(10px * var(--u)); }
 }

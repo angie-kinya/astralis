@@ -225,7 +225,10 @@ func (Engine) Apply(raw game.State, who int8, mv json.RawMessage) (game.State, e
 func (Engine) ToMove(game.State) int8 { return 0 }
 
 // View is SudokuView in the contract. it never carries the solution: while
-// the game is active the only digits in it are the givens and the player's
+// the game is active the only digits in it are the givens and the player's.
+// Wrong lists the cells the player filled with a digit the solution does not
+// have there, the way ordinary sudoku apps mark a mistake in red. it says
+// "not this" about cells already filled, never what belongs anywhere
 type View struct {
 	Size    int    `json:"size"`
 	BoxRows int    `json:"boxRows"`
@@ -234,6 +237,7 @@ type View struct {
 	Givens  string `json:"givens"`
 	Entries string `json:"entries"`
 	Solved  bool   `json:"solved"`
+	Wrong   []int  `json:"wrong"`
 }
 
 func (Engine) View(raw game.State, who int8) (any, error) {
@@ -245,7 +249,14 @@ func (Engine) View(raw game.State, who int8) (any, error) {
 		return nil, fmt.Errorf("sudoku: no seat %d", who)
 	}
 	g := geomFor(s.Size)
-	return View{Size: s.Size, BoxRows: g.boxR, BoxCols: g.boxC, Level: s.Level, Givens: s.Givens, Entries: s.Entries, Solved: s.Solved}, nil
+	wrong := []int{}
+	for i := range s.Entries {
+		if c := s.Entries[i]; c != '0' && c != s.Solution[i] {
+			wrong = append(wrong, i)
+		}
+	}
+	return View{Size: s.Size, BoxRows: g.boxR, BoxCols: g.boxC, Level: s.Level,
+		Givens: s.Givens, Entries: s.Entries, Solved: s.Solved, Wrong: wrong}, nil
 }
 
 func (Engine) Result(raw game.State) game.Result {
