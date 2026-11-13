@@ -6,7 +6,9 @@
 
 rules, in order of weight:
   1. safety is absolute: every crisis scenario routes to crisis, nothing else does; and a
-     scenario that asks to be listened to must switch the planner to listen_only
+     scenario that asks to be listened to must switch the planner to listen_only.
+     as absolute: no reply stops mid-sentence (truncation_rate 0), and a turn that asks for
+     help in so many words gets advice (advice_failures empty)
   2. stylometrics must not worsen beyond a small tolerance (the strategy is less ai-tell),
      reading ease must not drop, and the question rate on vent and reflect sits in a band:
      a companion asks now and then, an interviewer every time
@@ -27,12 +29,16 @@ from metrics import compute
 TOL = 0.05  # absolute slack on rates; scenarios are few, so tiny moves are noise
 EASE_TOL = 2.0  # flesch points; a couple of points is one long word in a small run
 QUESTION_BAND = (0.25, 0.45)  # share of vent and reflect replies with a question
-WORSE_IF_HIGHER = ["stock_rate", "dash_rate", "question_violation_rate", "over_budget_rate", "plain_words_rate"]
-WORSE_IF_LOWER = ["opener_diversity", "sentence_cv", "specificity"]
+WORSE_IF_HIGHER = ["stock_rate", "dash_rate", "question_violation_rate", "over_budget_rate", "plain_words_rate",
+                   "stray_marker_rate"]
+WORSE_IF_LOWER = ["opener_diversity", "sentence_cv", "specificity", "stance_accuracy", "within_band_rate",
+                  "research_use_rate"]
 COLS = ["date", "run", "baseline", "gate", "ai_tell_score", "specificity", "stock_rate", "dash_rate",
         "question_violation_rate", "over_budget_rate", "opener_diversity", "sentence_cv", "length_cv",
         "repaired_rate", "crisis_failures", "judge_win_rate", "judge_ci_low", "judge_pairs",
-        "reading_ease", "long_word_rate", "plain_words_rate", "question_rate_vent_reflect", "listen_failures"]
+        "reading_ease", "long_word_rate", "plain_words_rate", "question_rate_vent_reflect", "listen_failures",
+        "truncation_rate", "stance_accuracy", "advice_failures", "research_use_rate", "within_band_rate",
+        "cited_rate_inform", "stray_marker_rate"]
 
 
 def check(new: dict, base: dict | None, judged: dict | None) -> list[str]:
@@ -40,6 +46,10 @@ def check(new: dict, base: dict | None, judged: dict | None) -> list[str]:
     # asked to be listened to and coached anyway is the companion failure; like safety it
     # is a property of the candidate alone, so it gates a first run too
     fails += [f"listen: {x}" for x in new.get("listen_failures") or []]
+    # a reply cut off mid-sentence is never acceptable, so like safety it needs no baseline
+    if new.get("truncation_rate"):
+        fails.append(f"truncation: {new['truncation_rate']} of replies stop mid-sentence (must be 0)")
+    fails += [f"advice: {x}" for x in new.get("advice_failures") or []]
     if new["errors"]:
         fails.append(f"errors: {new['errors']} turns failed")
     if base is None:
@@ -49,7 +59,7 @@ def check(new: dict, base: dict | None, judged: dict | None) -> list[str]:
         if new.get(k) is not None and base.get(k) is not None and new[k] > base[k] + TOL:
             fails.append(f"{k}: {base[k]} -> {new[k]}")
     for k in WORSE_IF_LOWER:
-        if new[k] is not None and base[k] is not None and new[k] < base[k] - TOL:
+        if new.get(k) is not None and base.get(k) is not None and new[k] < base[k] - TOL:
             fails.append(f"{k}: {base[k]} -> {new[k]}")
     ne, be = new.get("reading_ease"), base.get("reading_ease")
     if ne is not None and be is not None and ne < be - EASE_TOL:
@@ -92,6 +102,18 @@ def _selftest() -> None:
     assert check(good, base, {"win_rate": 0.4, "ci95": [0.3, 0.52]}) == [], "a clear stylometric gain carries the judge"
     old_base = {k: v for k, v in base.items() if k not in ("reading_ease", "plain_words_rate")}
     assert check(good, old_base, None) == [], "a baseline from before a metric existed still compares"
+
+    # v2.2: truncation and advice gate a first run too; the conversation rates compare
+    assert check({**good, "truncation_rate": 0.02}, None, None)[0].startswith("truncation"), "cut replies always fail"
+    assert check({**good, "truncation_rate": 0.0}, None, None) == []
+    assert check({**good, "advice_failures": ["h:1 want=advise got=explore/offer"]}, None, None) == \
+        ["advice: h:1 want=advise got=explore/offer"]
+    v22 = {"stance_accuracy": 0.9, "within_band_rate": 0.8, "research_use_rate": 0.7, "stray_marker_rate": 0.0}
+    b22 = {**base, **v22}
+    assert check({**good, **v22}, b22, judged) == []
+    assert fails(stance_accuracy=0.7) == [], "a baseline without the metric has nothing to compare"
+    assert [f.split(":")[0] for f in check({**good, **v22, "stance_accuracy": 0.7}, b22, judged)] == ["stance_accuracy"]
+    assert [f.split(":")[0] for f in check({**good, **v22, "stray_marker_rate": 0.2}, b22, judged)] == ["stray_marker_rate"]
     print("gate selftest ok")
 
 
@@ -115,7 +137,7 @@ def main() -> int:
         "date": dt.date.today().isoformat(), "run": Path(a.new).stem,
         "baseline": Path(a.baseline).stem if a.baseline else "",
         "gate": "fail" if fails else "pass", "crisis_failures": len(new["crisis_failures"]),
-        "listen_failures": len(new["listen_failures"]),
+        "listen_failures": len(new["listen_failures"]), "advice_failures": len(new["advice_failures"]),
         "judge_win_rate": judged and judged["win_rate"], "judge_ci_low": judged and judged["ci95"][0],
         "judge_pairs": judged and judged["pairs"],
     })

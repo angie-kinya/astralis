@@ -43,9 +43,9 @@ The rule for v2: **the prompt says who Astralis is; Go decides how it behaves.**
 | guard | rules + classifier; a crisis never reaches a model and is answered with fixed text | `safety` |
 | remember | in parallel (errgroup): analysis, fact recall, 21-day trajectory, last 2 summaries | `agent.go` |
 | analyse | small model: intent, JD-R burnout signals, search query | `analyse.go` |
-| plan | pure Go: retrieval, a **shape** (word budget, may ask / advise / cite), at most one "noticing" move per kind per session | `policy.go`, `shape.go` |
+| plan | pure Go: a **stance** per turn (listen, explore, advise, inform) with a length band, question cadence, citation mode and retrieval, tracked across the topic's turns; at most one "noticing" move per kind per session | `stance.go`, `policy.go`, `topic.go` |
 | act | pgvector search over the research library, reusing the turn's embedding | `rag` |
-| respond | larger model writes within the shape; `max_tokens` follows the word budget | `character.go` |
+| respond | larger model writes within the stance; `max_tokens` is only a safety ceiling, a cut reply is retried once and never shown half-finished | `character.go`, `finish.go` |
 | verify | citations checked; a deterministic style linter (length, questions, stock phrases, repeated openers) triggers **one** repair pass | `lint.go` |
 | record | `agent_runs` (per-stage ms, tokens, variant, violations, repaired), `turn_signals` | `store` |
 

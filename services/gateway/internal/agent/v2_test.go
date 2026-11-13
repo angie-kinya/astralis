@@ -12,59 +12,102 @@ import (
 
 func TestShapeFor(t *testing.T) {
 	cases := []struct {
-		name     string
-		intent   string
-		words    int
-		retrieve bool
-		want     Shape
+		name   string
+		stance Stance
+		words  int
+		want   Band
 	}{
-		{"a one-word greeting gets the floor", "greeting", 1, false, Shape{Words: 15}},
-		{"a long vent hits the ceiling", "vent", 200, false, Shape{Words: 140}},
-		{"a short vent mirrors the person above the floor", "vent", 10, false, Shape{Words: 35}},
-		{"advice may cite when research ran", "seek_advice", 30, true, Shape{Words: 77, MayAdvise: true, Cite: true}},
-		{"a vent never cites, even with research", "vent", 30, true, Shape{Words: 59}},
-		{"evidence gets its floor", "ask_evidence", 10, true, Shape{Words: 90, MayAdvise: true, Cite: true}},
-		{"an unknown intent falls back to reflect", "mystery", 10, false, Shape{Words: 45}},
+		{"a one-word greeting gets the floor and a third of the band", StanceGreet, 1, Band{15, 30}},
+		{"a long vent reaches the top of the listening band", StanceListen, 200, Band{40, 120}},
+		{"a short message to listen to keeps room for a real reply", StanceListen, 3, Band{40, 66}},
+		{"a medium message mirrors inside the band", StanceExplore, 40, Band{60, 120}},
+		{"advice never drops below its floor", StanceAdvise, 6, Band{120, 166}},
+		{"evidence gets the most room", StanceInform, 200, Band{150, 320}},
+		{"an unknown stance falls back to explore", Stance("mystery"), 1, Band{60, 90}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			require.Equal(t, c.want, shapeFor(c.intent, c.words, c.retrieve))
+			sh := shapeFor(c.stance, c.words)
+			require.Equal(t, c.want, sh.Band)
+			require.Equal(t, AskForbid, sh.Ask, "cadence is Decide's, the zero value forbids")
+			require.Equal(t, AdviceNone, sh.Advice)
+			require.Equal(t, CiteNone, sh.Cite)
 		})
 	}
 }
 
-func TestBudgetsNeverDropBelowTheFloor(t *testing.T) {
-	want := map[string][2]int{
-		"vent": {35, 140}, "reflect": {45, 150}, "report_progress": {25, 110}, "greeting": {15, 45},
-		"off_topic": {20, 50}, "seek_advice": {70, 180}, "ask_evidence": {90, 220},
+func TestBandsNeverDropBelowTheFloor(t *testing.T) {
+	want := map[Stance]Band{
+		StanceGreet: {15, 60}, StanceOffTopic: {20, 60}, StanceListen: {40, 120},
+		StanceExplore: {60, 150}, StanceAdvise: {120, 260}, StanceInform: {150, 320},
 	}
-	require.Equal(t, want, budgets)
-	for intent, b := range budgets {
+	require.Equal(t, want, bands)
+	for st, b := range bands {
 		for _, n := range []int{0, 1, 5, 20, 80, 500} {
-			w := shapeFor(intent, n, false).Words
-			require.GreaterOrEqual(t, w, b[0], "%s at %d words", intent, n)
-			require.LessOrEqual(t, w, b[1], "%s at %d words", intent, n)
+			got := shapeFor(st, n).Band
+			require.Equal(t, b.Min, got.Min, "%s at %d words: mirroring never lowers the floor", st, n)
+			require.LessOrEqual(t, got.Max, b.Max, "%s at %d words", st, n)
+			require.Greater(t, got.Max, got.Min, "%s at %d words", st, n)
 		}
-		require.Less(t, shapeFor(intent, 1, false).Words, shapeFor(intent, 500, false).Words, "%s still mirrors", intent)
+		require.Less(t, shapeFor(st, 1).Band.Max, shapeFor(st, 500).Band.Max, "%s still mirrors", st)
 	}
 }
 
-func TestShapeTokensFollowTheBudget(t *testing.T) {
-	require.Equal(t, 160, Shape{Words: 8}.MaxTokens(), "a floor so a short reply is never cut mid-word")
-	require.Equal(t, 504, Shape{Words: 220}.MaxTokens())
-	ins := Shape{Words: 40}.Instructions()
+func TestInstructionsSpeakInSentencesNotWords(t *testing.T) {
+	cases := []struct {
+		band   Band
+		lo, hi int
+	}{
+		{Band{40, 66}, 3, 4},
+		{Band{60, 150}, 4, 10},
+		{Band{120, 260}, 8, 17},
+		{Band{15, 30}, 1, 2},
+		{Band{0, 0}, 1, 2}, // a hand-built shape still reads sensibly
+	}
+	for _, c := range cases {
+		lo, hi := c.band.Sentences()
+		require.Equal(t, [2]int{c.lo, c.hi}, [2]int{lo, hi}, "%v", c.band)
+	}
+	ins := Shape{Band: Band{40, 66}}.Instructions()
+	require.Contains(t, ins, "Length: usually 3 to 4 sentences. Always finish your last sentence.")
+	require.NotContains(t, ins, "words", "a word count reads as a limit to stop at")
+	require.NotContains(t, ins, "paragraphs")
+	require.Contains(t, Shape{Band: Band{120, 260}}.Instructions(), "two or three short paragraphs")
+}
+
+func TestInstructionsFollowTheShape(t *testing.T) {
+	ins := Shape{}.Instructions()
 	require.Contains(t, ins, "Do not ask a question", "the zero value forbids")
+	require.Contains(t, ins, "Do not give advice")
 	require.Contains(t, ins, "Do not use [n] markers")
-	require.Contains(t, Shape{Words: 40, Ask: AskAllow}.Instructions(), "A question is optional; at most one.")
-	require.Contains(t, Shape{Words: 40, Ask: AskInvite}.Instructions(), "End with one easy, open question about them, if it feels natural.")
-	require.NotContains(t, Shape{Words: 40, Ask: AskInvite}.Instructions(), "Do not ask")
+	require.Contains(t, Shape{Ask: AskAllow}.Instructions(), "A question is optional; at most one.")
+	require.Contains(t, Shape{Ask: AskInvite}.Instructions(), "End with one easy, open question about them, if it feels natural.")
+	require.NotContains(t, Shape{Ask: AskInvite}.Instructions(), "Do not ask")
+
+	offer := Shape{Ask: AskInvite, Advice: AdviceOffer}.Instructions()
+	require.Contains(t, offer, "a couple of ideas or would rather keep talking it through")
+	require.NotContains(t, offer, "open question about them", "the offer is the one question")
+	require.Contains(t, offer, "Do not give advice", "an offer is not advice")
+
+	give := Shape{Advice: AdviceGive}.Instructions()
+	require.Contains(t, give, "one to three small, concrete things")
+	require.Contains(t, give, "within their control")
+	require.Contains(t, Shape{Advice: AdviceAllow}.Instructions(), "follows from the research")
+
+	require.Contains(t, Shape{Cite: CiteMarkers}.Instructions(), "square brackets, like [2]")
+	words := Shape{Cite: CiteWords}.Instructions()
+	require.Contains(t, words, "in plain words")
+	require.Contains(t, words, "No [n] markers")
+	for _, sh := range []Shape{{}, {Cite: CiteWords}, {Cite: CiteMarkers}, {Advice: AdviceGive, Band: Band{120, 260}}} {
+		require.False(t, dash.MatchString(sh.Instructions()), "prompt-facing copy uses no dashes")
+	}
 }
 
 func TestCadence(t *testing.T) {
 	no, yes := false, true
 	cases := []struct {
 		name      string
-		intent    string
+		stance    Stance
 		words     int
 		userAsked bool
 		listening bool
@@ -72,25 +115,25 @@ func TestCadence(t *testing.T) {
 		quiet     int
 		want      Ask
 	}{
-		{"the first reply to a short vent invites", "vent", 6, no, no, nil, 2, AskInvite},
-		{"the previous reply asked, so none now", "vent", 6, no, no, []bool{no, yes}, 2, AskForbid},
-		{"evidence never asks", "ask_evidence", 6, no, no, nil, 2, AskForbid},
-		{"off topic never asks", "off_topic", 6, no, no, nil, 2, AskForbid},
-		{"they asked us something, so we answer", "reflect", 6, yes, no, nil, 2, AskForbid},
-		{"advice allows but does not invite", "seek_advice", 6, no, no, nil, 2, AskAllow},
-		{"listening never invites", "vent", 6, no, yes, nil, 2, AskAllow},
-		{"a question two replies back holds the invite", "vent", 6, no, no, []bool{yes, no}, 2, AskAllow},
-		{"two quiet replies invite again", "reflect", 6, no, no, []bool{yes, no, no}, 2, AskInvite},
-		{"curious invites after one quiet reply", "vent", 6, no, no, []bool{yes, no}, 1, AskInvite},
-		{"a long message late in a session allows", "vent", 40, no, no, []bool{no, no, no}, 2, AskAllow},
-		{"a long message early in a session invites", "vent", 40, no, no, []bool{no, no}, 2, AskInvite},
-		{"progress and greetings invite too", "report_progress", 8, no, no, nil, 2, AskInvite},
-		{"a greeting invites", "greeting", 1, no, no, nil, 2, AskInvite},
-		{"no intent (analyser down) allows", "", 6, no, no, nil, 2, AskAllow},
+		{"the first reply to a short vent invites", StanceListen, 6, no, no, nil, 2, AskInvite},
+		{"the previous reply asked, so none now", StanceListen, 6, no, no, []bool{no, yes}, 2, AskForbid},
+		{"evidence never asks", StanceInform, 6, no, no, nil, 2, AskForbid},
+		{"off topic never asks", StanceOffTopic, 6, no, no, nil, 2, AskForbid},
+		{"they asked us something, so we answer", StanceExplore, 6, yes, no, nil, 2, AskForbid},
+		{"advice allows but does not invite", StanceAdvise, 6, no, no, nil, 2, AskAllow},
+		{"listening never invites", StanceListen, 6, no, yes, nil, 2, AskAllow},
+		{"a question two replies back holds the invite", StanceListen, 6, no, no, []bool{yes, no}, 2, AskAllow},
+		{"two quiet replies invite again", StanceExplore, 6, no, no, []bool{yes, no, no}, 2, AskInvite},
+		{"curious invites after one quiet reply", StanceListen, 6, no, no, []bool{yes, no}, 1, AskInvite},
+		{"a long message late in a session allows", StanceListen, 40, no, no, []bool{no, no, no}, 2, AskAllow},
+		{"a long message early in a session invites", StanceListen, 40, no, no, []bool{no, no}, 2, AskInvite},
+		{"exploring invites", StanceExplore, 8, no, no, nil, 2, AskInvite},
+		{"a greeting invites", StanceGreet, 1, no, no, nil, 2, AskInvite},
+		{"an unknown stance allows", Stance(""), 6, no, no, nil, 2, AskAllow},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			require.Equal(t, c.want, cadence(c.intent, c.words, c.userAsked, c.listening, c.asked, c.quiet))
+			require.Equal(t, c.want, cadence(c.stance, c.words, c.userAsked, c.listening, c.asked, c.quiet))
 		})
 	}
 }
@@ -211,7 +254,7 @@ func TestDecideListenOnly(t *testing.T) {
 			p := Decide(c.an, c.analysed, c.msg, Situation{Moved: c.moved})
 			require.Equal(t, c.wantMove, slices.Contains(p.Moves, moveListen))
 			if c.wantListen {
-				require.False(t, p.Shape.MayAdvise)
+				require.Equal(t, AdviceNone, p.Shape.Advice)
 				require.NotEqual(t, AskInvite, p.Shape.Ask)
 				require.Contains(t, p.Guidance, listenGuidance)
 			} else {
@@ -221,7 +264,8 @@ func TestDecideListenOnly(t *testing.T) {
 	}
 	t.Run("advice intent keeps advice on when lifted", func(t *testing.T) {
 		p := Decide(Analysis{Intent: "seek_advice"}, true, "ok what should I do", Situation{Moved: listening})
-		require.True(t, p.Shape.MayAdvise)
+		require.Equal(t, StanceAdvise, p.Shape.Stance)
+		require.Equal(t, AdviceGive, p.Shape.Advice)
 	})
 	t.Run("a listening vent with quiet replies allows rather than invites", func(t *testing.T) {
 		p := Decide(Analysis{Intent: "vent"}, true, "ugh", Situation{Moved: listening, Asked: []bool{false, false}})
@@ -242,7 +286,7 @@ func TestResolveVariant(t *testing.T) {
 }
 
 func TestLint(t *testing.T) {
-	sh := Shape{Words: 20, Ask: AskAllow}
+	sh := Shape{Band: Band{10, 20}, Ask: AskAllow}
 	cases := []struct {
 		name  string
 		reply string
@@ -252,8 +296,15 @@ func TestLint(t *testing.T) {
 	}{
 		{"a clean reply", "Same targets nobody hit again. That's rough.", sh, nil, []string{}},
 		{"two questions", "Was it Friday? Or Monday?", sh, nil, []string{"question"}},
-		{"a question when none was allowed", "How did it go?", Shape{Words: 20}, nil, []string{"question"}},
-		{"too long", strings.Repeat("word ", 40), sh, nil, []string{"length"}},
+		{"a question when none was allowed", "How did it go?", Shape{Band: Band{10, 20}}, nil, []string{"question"}},
+		{"too long", strings.Repeat("word ", 40) + "end.", sh, nil, []string{"length"}},
+		{"inside the slack is not long", strings.Repeat("word ", 24) + "end.", sh, nil, []string{}},
+		{"a hand-built shape has no length rule", strings.Repeat("word ", 400) + "end.", Shape{}, nil, []string{}},
+		{"cut off mid-sentence", "That's the whole day gone before", sh, nil, []string{"truncated"}},
+		{"a comma is not an end", "Seven meetings, and then", sh, nil, []string{"truncated"}},
+		{"a closing quote after the stop is fine", `She said "not again."`, sh, nil, []string{}},
+		{"a final citation marker is fine", "Sleep helps [2].", sh, nil, []string{}},
+		{"an emoji ends a casual line", "Good for you 🎉", sh, nil, []string{}},
 		{"stock phrase", "It sounds like a hard week.", sh, nil, []string{"stock_phrase"}},
 		{"an em dash", "Monday again—same targets.", sh, nil, []string{"dash"}},
 		{"a hyphenated word is fine", "A month-end audit.", sh, nil, []string{}},
@@ -288,7 +339,7 @@ func TestLintQuestionFollowsAsk(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.ask.String()+"/"+c.reply, func(t *testing.T) {
-			got := slices.Contains(Lint(c.reply, Shape{Words: 40, Ask: c.ask}, nil), "question")
+			got := slices.Contains(Lint(c.reply, Shape{Band: Band{20, 40}, Ask: c.ask}, nil), "question")
 			require.Equal(t, c.flag, got)
 		})
 	}
@@ -326,9 +377,10 @@ func TestSyllables(t *testing.T) {
 }
 
 func TestRepairNoteNamesEachFix(t *testing.T) {
-	n := repairNote([]string{"question", "dash"}, "Draft text?")
+	n := repairNote([]string{"question", "dash", "truncated"}, "Draft text?")
 	require.Contains(t, n, "remove the question")
 	require.Contains(t, n, "commas or full stops")
+	require.Contains(t, n, "end on a complete sentence")
 	require.True(t, strings.HasSuffix(n, "Draft text?"))
 }
 
@@ -389,15 +441,15 @@ func TestAnchorsPassTheLint(t *testing.T) {
 	for _, line := range strings.Split(Character, "\n") {
 		if reply, ok := strings.CutPrefix(line, "You: "); ok {
 			n++
-			require.Empty(t, Lint(strings.Trim(reply, `"`), Shape{Words: 60, Ask: AskAllow}, nil), reply)
+			require.Empty(t, Lint(strings.Trim(reply, `"`), Shape{Band: bands[StanceInform], Ask: AskAllow}, nil), reply)
 		}
 	}
-	require.Equal(t, 6, n)
+	require.Equal(t, 8, n)
 	require.Contains(t, Character, "HONESTY (fixed)\nYou are an AI.")
 }
 
 func TestBuildSystemPutsTheShapeLast(t *testing.T) {
-	p := Plan{Guidance: "Brief.", Shape: Shape{Words: 30}}
+	p := Plan{Guidance: "Brief.", Shape: Shape{Band: Band{15, 30}}}
 	sys := buildSystem("curious", nil, []store.Fact{{Kind: "commitment", Subject: "walk at lunch", Detail: "said she would try", Status: "open"}}, nil, p)
 	require.True(t, strings.HasPrefix(sys, Character))
 	require.Contains(t, sys, Variants["curious"].Line)

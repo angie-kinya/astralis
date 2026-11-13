@@ -42,6 +42,8 @@ def play(client: httpx.Client, sc: dict, variant: str | None) -> list[dict]:
             "users_so_far": sc["turns"][:i], "subjects": subjects,
             "reply": out.get("reply", ""), "crisis": bool(out.get("crisis")),
             "cited": len(out.get("sources") or []), "run": out.get("run"),
+            # the stance the planner should choose this turn: "explore|advise" accepts either, null skips
+            "want_stance": (sc.get("stances") or [])[i - 1] if i <= len(sc.get("stances") or []) else None,
             "error": out.get("error"),
         })
         if out.get("error") and not session:

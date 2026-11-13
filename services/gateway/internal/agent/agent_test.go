@@ -8,10 +8,15 @@ import (
 )
 
 func TestDecideFallsBackToPlainRetrievalWhenAnalysisFails(t *testing.T) {
-	p := Decide(Analysis{}, false, "my manager keeps moving deadlines", Situation{})
+	p := Decide(Analysis{Intent: "vent", Topic: "ignored"}, false, "my manager keeps moving deadlines", Situation{})
 	require.True(t, p.Retrieve)
 	require.Equal(t, "my manager keeps moving deadlines", p.Query)
-	require.Empty(t, p.Guidance)
+	require.Equal(t, StanceExplore, p.Shape.Stance, "an analysis that failed is never read")
+	require.Equal(t, CiteWords, p.Shape.Cite, "nothing asked for sources")
+
+	p = Decide(Analysis{}, false, "what does the research say about four day weeks", Situation{})
+	require.Equal(t, StanceInform, p.Shape.Stance)
+	require.Equal(t, CiteMarkers, p.Shape.Cite)
 }
 
 func TestDecideRoutesOnIntent(t *testing.T) {
@@ -20,17 +25,19 @@ func TestDecideRoutesOnIntent(t *testing.T) {
 		require.False(t, p.Retrieve)
 		require.NotEmpty(t, p.Guidance)
 	})
-	t.Run("asking for evidence always retrieves, with the rewritten query", func(t *testing.T) {
-		p := Decide(Analysis{Intent: "ask_evidence", SearchQuery: "detachment from work and sleep"}, true, "does that help?", Situation{})
+	t.Run("asking for evidence always retrieves, with the topic as the query", func(t *testing.T) {
+		p := Decide(Analysis{Intent: "ask_evidence", Topic: "detachment from work and sleep"}, true, "does that help?", Situation{})
 		require.True(t, p.Retrieve)
 		require.Equal(t, "detachment from work and sleep", p.Query)
+		require.Equal(t, CiteMarkers, p.Shape.Cite)
 	})
-	t.Run("a short reply without a rewritten query does not retrieve", func(t *testing.T) {
-		p := Decide(Analysis{Intent: "vent", NeedsResearch: true}, true, "yes exactly", Situation{})
+	t.Run("a short reply with no topic does not retrieve", func(t *testing.T) {
+		p := Decide(Analysis{Intent: "reflect", NeedsResearch: true}, true, "yes exactly", Situation{})
 		require.False(t, p.Retrieve)
 	})
-	t.Run("venting retrieves only when research would help", func(t *testing.T) {
-		p := Decide(Analysis{Intent: "vent", NeedsResearch: false}, true, "I am so tired of being ignored in every meeting", Situation{})
+	t.Run("listening never retrieves, whatever the topic", func(t *testing.T) {
+		p := Decide(Analysis{Intent: "vent", NeedsResearch: true, Topic: "workload and long hours"}, true, "I am so tired of being ignored in every meeting", Situation{})
+		require.Equal(t, StanceListen, p.Shape.Stance)
 		require.False(t, p.Retrieve)
 	})
 }
@@ -43,12 +50,21 @@ func TestParseAnalysisDistrustsTheModel(t *testing.T) {
 	require.Equal(t, "not_evident", an.Cynicism, "values outside the vocabulary become not_evident")
 	require.Equal(t, []string{"workload"}, an.Demands, "unknown and repeated tags are dropped")
 	require.Equal(t, -1.0, an.Valence, "valence is clamped")
-	require.Equal(t, "", an.SearchQuery)
+	require.Equal(t, "", an.Topic)
+	require.Equal(t, "", an.StanceHint, "a missing hint is no hint")
+	require.Equal(t, "personal", an.Depth)
 	require.Equal(t, "unclear", an.WantsAdvice, "a missing wants_advice is unclear, never a silent no")
 
-	an, err = parseAnalysis(`{"intent":"vent","wants_advice":"no"}`)
+	an, err = parseAnalysis(`{"intent":"vent","wants_advice":"no","stance_hint":"listen","depth":"heavy","topic":" motivation at work "}`)
 	require.NoError(t, err)
 	require.Equal(t, "no", an.WantsAdvice)
+	require.Equal(t, "listen", an.StanceHint)
+	require.Equal(t, "heavy", an.Depth)
+	require.Equal(t, "motivation at work", an.Topic)
+	an, err = parseAnalysis(`{"intent":"vent","stance_hint":"coach","depth":"deep"}`)
+	require.NoError(t, err)
+	require.Equal(t, "", an.StanceHint)
+	require.Equal(t, "personal", an.Depth)
 	an, err = parseAnalysis(`{"intent":"vent","wants_advice":"never"}`)
 	require.NoError(t, err)
 	require.Equal(t, "unclear", an.WantsAdvice)
@@ -76,9 +92,9 @@ func TestRenumberCitations(t *testing.T) {
 	require.Empty(t, used)
 }
 
-func TestSearchQueryIsCapped(t *testing.T) {
+func TestTopicIsCapped(t *testing.T) {
 	long := strings.Repeat("burnout ", 200) // 1,600 runes
-	an, err := parseAnalysis(`{"intent":"ask_evidence","needs_research":true,"search_query":"` + long + `"}`)
+	an, err := parseAnalysis(`{"intent":"ask_evidence","needs_research":true,"topic":"` + long + `"}`)
 	require.NoError(t, err)
-	require.Len(t, []rune(an.SearchQuery), maxQueryRunes)
+	require.Len(t, []rune(an.Topic), maxQueryRunes)
 }

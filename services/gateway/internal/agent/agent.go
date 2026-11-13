@@ -14,6 +14,12 @@
 // (shape.go), what it recalls (person_facts, trajectory), and whether the
 // reply passes (lint.go, with one repair pass)
 //
+// v2.2 gives each turn one purpose. Go picks a stance (stance.go: listen,
+// explore, advise, inform) from the analysis and the thread the session is
+// on (topic.go), and the stance carries the length band, the questions, the
+// advice and how research is used. the token limit is a safety ceiling only,
+// and no reply is ever stored or shown cut off mid-sentence (finish.go)
+//
 // Nothing here trains a model. The agent measures (turn_signals) and records
 // what it did (agent_runs); a separate prediction model can learn from those
 // tables later, in Python, with no change to this package
@@ -24,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -165,6 +172,8 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 		facts      []store.Fact
 		pattern    store.Pattern
 		moved      map[string]bool
+		topic      store.TopicState
+		topicErr   error
 		summaries  []string
 		variant    string
 		msAnalyse  int64
@@ -206,11 +215,12 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 		summaries, summaryErr = a.store.RecentSummaries(gctx, t.UserID, 2)
 		return nil
 	})
+	g.Go(func() error { topic, topicErr = a.store.LastTopic(gctx, t.SessionID); return nil })
 	g.Go(func() error { variant = a.variant(gctx, t.SessionID); return nil })
 	_ = g.Wait()
 	stage("gather", t0)
 	run.StagesMS["analyse"], run.StagesMS["recall"] = msAnalyse, msRecall
-	for name, err := range map[string]error{"recall": recallErr, "pattern": patternErr, "memory": summaryErr} {
+	for name, err := range map[string]error{"recall": recallErr, "pattern": patternErr, "memory": summaryErr, "topic": topicErr} {
 		if err != nil {
 			note(name, err) // continuity is nice to have, not a reason to fail
 		}
@@ -222,10 +232,7 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 	} else {
 		run.AnalyserOK, run.Intent = true, an.Intent
 	}
-	run.PromptVariant, run.FactsUsed = variant, len(facts)
-	if len(facts) > 0 {
-		progress(t, "checking what you told me before")
-	}
+	run.PromptVariant = variant
 
 	// PLAN. pure Go
 	prev := assistantReplies(history)
@@ -234,21 +241,54 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 		asked[i] = askedQuestion(r)
 	}
 	plan := Decide(an, aerr == nil, t.Content, Situation{
-		Asked:   asked,
-		Pattern: pattern,
-		Moved:   moved,
-		Variant: variant,
+		Asked:     asked,
+		Pattern:   pattern,
+		Moved:     moved,
+		Variant:   variant,
+		Topic:     topic,
+		Earlier:   earlierUser(history, t.Content),
+		LastReply: lastOf(prev),
 	})
 	run.Moves = plan.Moves
+	run.Stance, run.Advice = string(plan.Shape.Stance), plan.Shape.Advice.String()
+	run.BandMin, run.BandMax = plan.Shape.Band.Min, plan.Shape.Band.Max
+	run.Topic, run.TopicTurns = plan.Topic.Topic, plan.Topic.Turns
 
-	// ACT. only the tools the plan asked for
+	// ACT. the topic is embedded once and used twice: to search the research,
+	// and to recall what they said before about this thread, which the
+	// message alone ("it's more that nothing feels worth starting") may not reach
+	var tvec []float32
+	if tp := plan.Topic.Topic; tp != "" && tp != t.Content {
+		t0 = time.Now()
+		v, err := a.embedder.Embed(ctx, []string{tp})
+		if err != nil || len(v) == 0 || len(v[0]) == 0 {
+			note("topic", errors.Join(err, errors.New("no topic vector")))
+		} else {
+			tvec = v[0]
+			more, err := a.store.RecallFacts(ctx, t.UserID, tvec, 4, 0.30)
+			if err != nil {
+				note("recall", err)
+			}
+			facts = mergeFacts(facts, more, maxFacts)
+		}
+		stage("topic", t0)
+	}
+	run.FactsUsed = len(facts)
+	if len(facts) > 0 {
+		progress(t, "checking what you told me before")
+	}
+
+	// only the tools the plan asked for
 	var chunks []store.Chunk
 	if plan.Retrieve {
 		t0 = time.Now()
 		run.RetrievalUsed = true
-		vec := qvec
-		if plan.Query != t.Content || len(vec) == 0 {
-			vec = nil // the analyser rewrote the query, so it needs its own vector
+		var vec []float32 // nil asks retrieve to embed the query itself
+		switch plan.Query {
+		case t.Content:
+			vec = qvec
+		case plan.Topic.Topic:
+			vec = tvec
 		}
 		if chunks, err = a.retrieve(ctx, plan.Query, vec); err != nil {
 			note("retrieve", err) // answer ungrounded rather than not at all
@@ -261,9 +301,12 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 			progress(t, fmt.Sprintf("reading %d studies", n))
 		}
 	}
-	plan.Shape.Cite = plan.Shape.Cite && len(chunks) > 0
+	if len(chunks) == 0 {
+		plan.Shape.Cite = CiteNone // nothing to draw on, so say nothing about research
+	}
+	run.CiteMode = plan.Shape.Cite.String()
 	run.ChunksFound = len(chunks)
-	run.WordBudget = plan.Shape.Words
+	run.WordBudget = plan.Shape.Band.Max
 	for i, c := range chunks {
 		if i == 0 || c.Similarity > *run.TopSimilarity {
 			sim := c.Similarity
@@ -275,7 +318,7 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 	t0 = time.Now()
 	system := buildSystem(variant, summaries, facts, chunks, plan)
 	msgs := conversation(history, t.Content)
-	draft, err := a.respond(ctx, system, msgs, plan.Shape, &run)
+	d, err := a.respond(ctx, system, msgs, &run)
 	stage("respond", t0)
 	if err != nil {
 		note("respond", err)
@@ -283,25 +326,37 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 	}
 
 	// VERIFY. the style lint first, with one repair pass at most: a second
-	// failure ships with its violations logged, which is what evals are for
-	run.StyleViolations = Lint(draft, plan.Shape, prev)
+	// failure ships with its violations logged, which is what evals are for.
+	// a draft the ceiling cut fails the lint as truncated, so the repair is
+	// also the first attempt to finish it properly
+	run.StyleViolations = lintDraft(d, plan.Shape, prev)
 	if len(run.StyleViolations) > 0 && a.cfg.Repair {
 		t0 = time.Now()
-		revised, rerr := a.respond(ctx, system+repairNote(run.StyleViolations, draft), msgs, plan.Shape, &run)
+		revised, rerr := a.respond(ctx, system+repairNote(run.StyleViolations, d.text), msgs, &run)
 		stage("repair", t0)
 		if rerr != nil {
 			note("repair", rerr) // the first draft still stands
-		} else if len(Lint(revised, plan.Shape, prev)) < len(run.StyleViolations) {
-			draft, run.Repaired = revised, true
+		} else if len(lintDraft(revised, plan.Shape, prev)) < len(run.StyleViolations) {
+			d, run.Repaired = revised, true
 		}
 	}
-	// then citations: keep only markers that point at something real. when
-	// the shape forbids citing, every marker goes, whatever the model wrote
+	// then the last word on truncation: whatever was cut loses its unfinished
+	// sentence, and a reply with no finished sentence at all is a failure
+	// rather than something to show
+	final, ok := finish(d.text, d.cut)
+	if !ok {
+		err := errors.New("reply cut off before its first sentence ended")
+		note("respond", err)
+		return Result{}, fmt.Errorf("generate reply: %w", err)
+	}
+	run.Truncated = d.cut
+	// then citations: keep only markers that point at something real. outside
+	// the markers mode every marker goes, whatever the model wrote
 	available := len(chunks)
-	if !plan.Shape.Cite {
+	if plan.Shape.Cite != CiteMarkers {
 		available = 0
 	}
-	text, cited := renumberCitations(draft, available)
+	text, cited := renumberCitations(final, available)
 	sources := make([]store.Chunk, 0, len(cited))
 	citedIDs := make([]string, 0, len(cited))
 	for _, k := range cited {
@@ -309,6 +364,7 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 		citedIDs = append(citedIDs, chunks[k-1].ID)
 	}
 	run.ChunksCited = len(cited)
+	run.UsedInWords = len(cited) == 0 && researchUsed(text, chunks, strings.Join(append(earlierUser(history, t.Content), t.Content), " "))
 	run.ReplyWords = len(strings.Fields(text))
 
 	// RECORD
@@ -348,22 +404,59 @@ func (a *Agent) Handle(ctx context.Context, t Turn) (Result, error) {
 	return Result{Reply: text, RecommendationID: recID, Sources: sources}, nil
 }
 
-// respond makes one reply call within the shape's token budget and adds its
-// usage to the run. an empty reply is an error, not a reply
-func (a *Agent) respond(ctx context.Context, system string, msgs []llm.Message, sh Shape, run *store.Run) (string, error) {
+// draft is one reply from the model. cut is true when the ceiling stopped it
+// even after the retry, so its last sentence may be unfinished
+type draft struct {
+	text string
+	cut  bool
+}
+
+// respond makes one reply call under the safety ceiling and adds its usage
+// to the run. a reply the ceiling cuts is asked for once more with twice the
+// room: a reply in its band never comes near the ceiling, so hitting it means
+// a runaway or a long think, and either deserves a second chance before
+// anything is trimmed. an empty reply is an error, not a reply
+func (a *Agent) respond(ctx context.Context, system string, msgs []llm.Message, run *store.Run) (draft, error) {
+	limit := replyCeiling(a.cfg.RespondEffort)
+	res, err := a.generate(ctx, system, msgs, limit, run)
+	if err == nil && res.StopReason == stopMaxTokens {
+		t0 := time.Now()
+		again, rerr := a.generate(ctx, system, msgs, limit*2, run)
+		if run.StagesMS != nil {
+			run.StagesMS["retry"] += time.Since(t0).Milliseconds()
+		}
+		if rerr == nil && strings.TrimSpace(again.Text) != "" {
+			res = again // otherwise the cut reply stands, to be trimmed
+		}
+	}
+	run.StopReason = res.StopReason
+	text := strings.TrimSpace(res.Text)
+	if err == nil && text == "" {
+		err = fmt.Errorf("empty reply (stop_reason=%s)", res.StopReason)
+	}
+	return draft{text: text, cut: res.StopReason == stopMaxTokens}, err
+}
+
+func (a *Agent) generate(ctx context.Context, system string, msgs []llm.Message, limit int, run *store.Run) (llm.Response, error) {
 	res, err := a.model.Generate(ctx, llm.Request{
 		System:    system,
 		Messages:  msgs,
-		MaxTokens: sh.MaxTokens(),
+		MaxTokens: limit,
 		Effort:    a.cfg.RespondEffort,
 	})
 	run.InputTokens += res.Usage.InputTokens
 	run.OutputTokens += res.Usage.OutputTokens
-	run.StopReason = res.StopReason
-	if err == nil && strings.TrimSpace(res.Text) == "" {
-		err = fmt.Errorf("empty reply (stop_reason=%s)", res.StopReason)
+	return res, err
+}
+
+// lintDraft is Lint plus what only the call knows: a draft the ceiling cut
+// is truncated even when it happens to stop on a full stop
+func lintDraft(d draft, sh Shape, prev []string) []string {
+	v := Lint(d.text, sh, prev)
+	if d.cut && !slices.Contains(v, "truncated") {
+		v = append(v, "truncated")
 	}
-	return strings.TrimSpace(res.Text), err
+	return v
 }
 
 // variant returns the session's voice, choosing one by thompson sampling on
@@ -402,6 +495,51 @@ func assistantReplies(history []store.Message) []string {
 		}
 	}
 	return out
+}
+
+// earlierUser are the person's messages in the window before this one,
+// oldest first. the handler has already stored this turn, so it is dropped
+// from the end when it is there
+func earlierUser(history []store.Message, current string) []string {
+	var out []string
+	for _, m := range history {
+		if m.Role == "user" {
+			out = append(out, m.Content)
+		}
+	}
+	if n := len(out); n > 0 && out[n-1] == current {
+		out = out[:n-1]
+	}
+	return out
+}
+
+func lastOf(xs []string) string {
+	if len(xs) == 0 {
+		return ""
+	}
+	return xs[len(xs)-1]
+}
+
+// maxFacts bounds recall: four by similarity plus two open commitments is
+// what one call returns at most, and a second recall must not widen that
+const maxFacts = 6
+
+// mergeFacts adds the facts in more that are not already in facts, up to n
+func mergeFacts(facts, more []store.Fact, n int) []store.Fact {
+	seen := map[string]bool{}
+	for _, f := range facts {
+		seen[f.ID] = true
+	}
+	for _, f := range more {
+		if len(facts) >= n {
+			break
+		}
+		if !seen[f.ID] {
+			seen[f.ID] = true
+			facts = append(facts, f)
+		}
+	}
+	return facts
 }
 
 // crisis answers with fixed, human written text. the model is never called,

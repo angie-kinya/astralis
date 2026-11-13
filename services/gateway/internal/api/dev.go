@@ -50,6 +50,20 @@ type devRun struct {
 	FactsUsed       int      `json:"factsUsed"`
 	Moves           []string `json:"moves"`
 	TotalMS         int      `json:"totalMs"`
+
+	// v2.2: the turn plan, for stance accuracy, length in band, truncation
+	// and research use
+	Stance      *string `json:"stance"`
+	BandMin     *int    `json:"bandMin"`
+	BandMax     *int    `json:"bandMax"`
+	Advice      *string `json:"advice"`
+	CiteMode    *string `json:"citeMode"`
+	Truncated   bool    `json:"truncated"`
+	UsedInWords bool    `json:"usedInWords"`
+	TopicTurns  int     `json:"topicTurns"`
+	ChunksFound int     `json:"chunksFound"`
+	ChunksCited int     `json:"chunksCited"`
+	StopReason  *string `json:"stopReason"`
 }
 
 var personaRe = regexp.MustCompile(`^[a-z0-9_-]{1,40}$`)
@@ -129,10 +143,14 @@ func (s *Server) handleDevTurn(c *gin.Context) {
 	r := devRun{}
 	if err := s.store.Pool().QueryRow(ctx, `
 		SELECT route, intent, prompt_variant, word_budget, reply_words, style_violations,
-		       repaired, facts_used, moves, total_ms
+		       repaired, facts_used, moves, total_ms,
+		       stance, band_min, band_max, advice, cite_mode, truncated, used_in_words, topic_turns,
+		       chunks_found, chunks_cited, stop_reason
 		FROM agent_runs WHERE session_id=$1 ORDER BY created_at DESC LIMIT 1`, sessionID).Scan(
 		&r.Route, &r.Intent, &r.PromptVariant, &r.WordBudget, &r.ReplyWords, &r.StyleViolations,
-		&r.Repaired, &r.FactsUsed, &r.Moves, &r.TotalMS); err == nil {
+		&r.Repaired, &r.FactsUsed, &r.Moves, &r.TotalMS,
+		&r.Stance, &r.BandMin, &r.BandMax, &r.Advice, &r.CiteMode, &r.Truncated, &r.UsedInWords, &r.TopicTurns,
+		&r.ChunksFound, &r.ChunksCited, &r.StopReason); err == nil {
 		run = &r
 	}
 	c.JSON(http.StatusOK, gin.H{"sessionId": sessionID, "reply": res.Reply, "crisis": res.Crisis,

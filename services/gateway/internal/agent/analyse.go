@@ -13,7 +13,7 @@ import (
 )
 
 // AnalyserVersion is stamped on every turn_signals row. change the prompt, the schema or the model behind it, and bump this
-const AnalyserVersion = "a2-2026-11"
+const AnalyserVersion = "a3-2026-11"
 
 // Intents are what the person is trying to do with this message. the planner
 // routes on them, so each one must mean a different way of replying
@@ -48,11 +48,21 @@ var levels = []string{"not_evident", "low", "moderate", "high"}
 // explicit signal, because it switches the rest of the session to listening
 var adviceWants = []string{"yes", "no", "unclear"}
 
+// depths are how much of themselves a message carries. heavy is a reason to
+// listen rather than explore, whatever the intent
+var depths = []string{"surface", "personal", "heavy"}
+
 // Analysis is the analyser's structured reading of one message
 type Analysis struct {
-	Intent          string   `json:"intent"`
-	NeedsResearch   bool     `json:"needs_research"`
-	SearchQuery     string   `json:"search_query"`
+	Intent        string `json:"intent"`
+	NeedsResearch bool   `json:"needs_research"`
+	// Topic is what the conversation is about now, in a few words. it is the
+	// research query and the thread Go follows from turn to turn
+	Topic string `json:"topic"`
+	// StanceHint is the analyser's view of the reply's purpose. Go decides
+	// the stance; the hint is one input to that decision
+	StanceHint      string   `json:"stance_hint"`
+	Depth           string   `json:"depth"`
 	Exhaustion      string   `json:"exhaustion"`
 	Cynicism        string   `json:"cynicism"`
 	ReducedEfficacy string   `json:"reduced_efficacy"`
@@ -70,7 +80,9 @@ var analysisSchema = map[string]any{
 	"properties": map[string]any{
 		"intent":           map[string]any{"type": "string", "enum": Intents},
 		"needs_research":   map[string]any{"type": "boolean"},
-		"search_query":     map[string]any{"type": "string"},
+		"topic":            map[string]any{"type": "string"},
+		"stance_hint":      map[string]any{"type": "string", "enum": Stances},
+		"depth":            map[string]any{"type": "string", "enum": depths},
 		"exhaustion":       map[string]any{"type": "string", "enum": levels},
 		"cynicism":         map[string]any{"type": "string", "enum": levels},
 		"reduced_efficacy": map[string]any{"type": "string", "enum": levels},
@@ -87,9 +99,11 @@ var analysisSchema = map[string]any{
 const analyserPrompt = `You are the analysis stage of Astralis, a reflection companion for people dealing with work stress and burnout. You never reply to the person. You read the latest message, using the earlier conversation only for context, and return one JSON object.
 
 Fields:
-intent: what the person is trying to do with the latest message.
-needs_research: true only if published research on work stress or burnout would genuinely help the reply.
-search_query: if needs_research is true, a standalone academic search query of at most 15 English words, with pronouns resolved from context. Otherwise an empty string.
+intent: what the person is trying to do with the latest message. seek_advice only when they ask what to do or ask for help or ideas; naming a problem without asking for anything is vent or reflect.
+needs_research: true if published research on work stress or burnout could help the reply.
+topic: what the conversation is about now, as a standalone search phrase of at most 12 English words with pronouns resolved from context. Use research words where one fits: motivation, meaning, exhaustion, detachment, recovery, workload, autonomy, recognition, support, efficacy, job insecurity, work life conflict. If the latest message only continues the earlier topic ("yeah", "exactly"), repeat that topic. An empty string for greetings and off topic messages.
+stance_hint: what the reply should mainly do. listen: they are venting or want company. explore: a topic is just opening up. advise: they ask for help or ideas, directly or by naming a problem they want solved. inform: they ask what research says. greet or off_topic otherwise.
+depth: surface for logistics and small talk, personal when they share how they feel or what matters to them, heavy for distress, grief, tears, or feeling at the end of their rope.
 exhaustion, cynicism, reduced_efficacy: the three burnout dimensions from Maslach. Rate only what the latest message shows. Use not_evident when it shows nothing either way. Never infer from tone alone.
 demands and resources: job demands and job resources the latest message mentions. Empty arrays when none are mentioned.
 valence: overall emotional tone of the latest message, from -1 (very negative) to 1 (very positive).
@@ -115,7 +129,7 @@ func (a *Agent) analyse(ctx context.Context, history []store.Message) (Analysis,
 		Model:     a.cfg.AnalystModel,
 		System:    analyserPrompt,
 		Messages:  []llm.Message{{Role: "user", Content: sb.String()}},
-		MaxTokens: 400,
+		MaxTokens: 512,
 		Schema:    analysisSchema,
 	})
 	if err != nil {
@@ -128,7 +142,7 @@ func (a *Agent) analyse(ctx context.Context, history []store.Message) (Analysis,
 // parseAnalysis decodes and then distrusts. the schema should guarantee the
 // shape, but a refusal or a truncated reply can still arrive, and a value
 // outside the vocabulary must never reach the database
-const maxQueryRunes = 300
+const maxQueryRunes = 160
 
 func parseAnalysis(raw string) (Analysis, error) {
 	var an Analysis
@@ -149,12 +163,19 @@ func parseAnalysis(raw string) (Analysis, error) {
 	if !slices.Contains(adviceWants, an.WantsAdvice) {
 		an.WantsAdvice = "unclear" // never a silent no: that would mute advice for the session
 	}
-	an.SearchQuery = strings.TrimSpace(an.SearchQuery)
-	// The query is model-written text that the plan sends on to the embedder.
-	// Cap it: a real search query is a sentence, and an unbounded one (from a
-	// runaway reply or an injected instruction) would only cost money and fail.
-	if r := []rune(an.SearchQuery); len(r) > maxQueryRunes {
-		an.SearchQuery = string(r[:maxQueryRunes])
+	if !slices.Contains(Stances, an.StanceHint) {
+		an.StanceHint = "" // no hint, rather than a guess
+	}
+	if !slices.Contains(depths, an.Depth) {
+		an.Depth = "personal"
+	}
+	// the topic is model-written text that the plan sends on to the embedder
+	// and stores on the run. cap it: a real topic is a phrase, and an
+	// unbounded one (a runaway reply or an injected instruction) would only
+	// cost money and fail
+	an.Topic = strings.TrimSpace(an.Topic)
+	if r := []rune(an.Topic); len(r) > maxQueryRunes {
+		an.Topic = string(r[:maxQueryRunes])
 	}
 	return an, nil
 }

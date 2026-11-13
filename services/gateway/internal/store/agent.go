@@ -3,7 +3,10 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Signals is one structured observation of one user message. Pointers are
@@ -69,6 +72,17 @@ type Run struct {
 	Repaired        bool     // the revised draft is the one that shipped
 	FactsUsed       int
 	Moves           []string
+
+	// v2.2: the turn plan and what became of it
+	Stance      string
+	BandMin     int
+	BandMax     int
+	Advice      string // none | offer | allow | give
+	CiteMode    string // none | words | markers
+	Truncated   bool   // the ceiling cut the shipped reply even after the retry, so it lost a sentence
+	UsedInWords bool   // the reply drew on the excerpts without markers (a heuristic)
+	Topic       string
+	TopicTurns  int
 }
 
 func (s *Store) SaveRun(ctx context.Context, r Run) error {
@@ -86,16 +100,46 @@ func (s *Store) SaveRun(ctx context.Context, r Run) error {
 		INSERT INTO agent_runs (user_id, session_id, user_message_id, reply_message_id, route,
 			intent, safety_rule, analyser_ok, retrieval_used, chunks_found, chunks_cited,
 			top_similarity, input_tokens, output_tokens, stop_reason, stages_ms, total_ms, error,
-			prompt_variant, word_budget, reply_words, style_violations, repaired, facts_used, moves)
+			prompt_variant, word_budget, reply_words, style_violations, repaired, facts_used, moves,
+			stance, band_min, band_max, advice, cite_mode, truncated, used_in_words, topic, topic_turns)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,
-			$19,$20,$21,$22,$23,$24,$25)`,
+			$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)`,
 		r.UserID, r.SessionID, nullIfEmpty(r.UserMessageID), nullIfEmpty(r.ReplyMessageID), r.Route,
 		nullIfEmpty(r.Intent), nullIfEmpty(r.SafetyRule), r.AnalyserOK, r.RetrievalUsed,
 		r.ChunksFound, r.ChunksCited, r.TopSimilarity, r.InputTokens, r.OutputTokens,
 		nullIfEmpty(r.StopReason), string(stages), r.TotalMS, nullIfEmpty(r.Error),
 		nullIfEmpty(r.PromptVariant), nullIfZero(r.WordBudget), nullIfZero(r.ReplyWords),
-		r.StyleViolations, r.Repaired, r.FactsUsed, r.Moves)
+		r.StyleViolations, r.Repaired, r.FactsUsed, r.Moves,
+		nullIfEmpty(r.Stance), nullIfZero(r.BandMin), nullIfZero(r.BandMax), nullIfEmpty(r.Advice),
+		nullIfEmpty(r.CiteMode), r.Truncated, r.UsedInWords, nullIfEmpty(r.Topic), r.TopicTurns)
 	return err
+}
+
+// TopicState is the thread a session is on: the analyser's latest topic and
+// how many turns in a row have been about it
+type TopicState struct {
+	Topic string
+	Turns int
+}
+
+// LastTopic is the active topic from the session's latest answered turn, or
+// the zero state on a first turn. it reads agent_runs rather than a table of
+// its own: the run already records every plan, and crisis and failed turns
+// carry no topic, so they never move a thread
+func (s *Store) LastTopic(ctx context.Context, sessionID string) (TopicState, error) {
+	var t TopicState
+	var topic *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT topic, topic_turns FROM agent_runs
+		WHERE session_id = $1 AND route = 'agent'
+		ORDER BY created_at DESC LIMIT 1`, sessionID).Scan(&topic, &t.Turns)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return TopicState{}, nil
+	}
+	if topic != nil {
+		t.Topic = *topic
+	}
+	return t, err
 }
 
 // RecentSummaries returns the last n session summaries, newest first
@@ -145,12 +189,16 @@ type Overview struct {
 	StyleViolationRate float64 `json:"styleViolationRate"`
 	RepairedRate       float64 `json:"repairedRate"`
 	FactsUsedRate      float64 `json:"factsUsedRate"`
-	LastError          *string `json:"lastError"`
-	LastErrorAt        *string `json:"lastErrorAt"`
+	// v2.2: the share of answered turns whose reply lost a sentence to the
+	// ceiling (the target is zero), and how turns split across stances
+	TruncationRate float64        `json:"truncationRate"`
+	StanceMix      map[string]int `json:"stanceMix"`
+	LastError      *string        `json:"lastError"`
+	LastErrorAt    *string        `json:"lastErrorAt"`
 }
 
 func (s *Store) AgentOverview(ctx context.Context, window time.Duration) (Overview, error) {
-	o := Overview{WindowHours: int(window.Hours())}
+	o := Overview{WindowHours: int(window.Hours()), StanceMix: map[string]int{}}
 	err := s.pool.QueryRow(ctx, `
 		SELECT count(*),
 		       count(*) FILTER (WHERE route='crisis'),
@@ -167,13 +215,33 @@ func (s *Store) AgentOverview(ctx context.Context, window time.Duration) (Overvi
 		       count(DISTINCT user_id),
 		       COALESCE(avg((cardinality(style_violations) > 0)::int) FILTER (WHERE route='agent'), 0)::float8,
 		       COALESCE(avg(repaired::int) FILTER (WHERE route='agent'), 0)::float8,
-		       COALESCE(avg((facts_used > 0)::int) FILTER (WHERE route='agent'), 0)::float8
+		       COALESCE(avg((facts_used > 0)::int) FILTER (WHERE route='agent'), 0)::float8,
+		       COALESCE(avg(truncated::int) FILTER (WHERE route='agent'), 0)::float8
 		FROM agent_runs WHERE created_at > now() - $1::interval`, window).Scan(
 		&o.Turns, &o.CrisisTurns, &o.FailedTurns, &o.AnalyserFailures, &o.ClassifierDown,
 		&o.RetrievalRate, &o.CitationRate, &o.TruncatedReplies, &o.P50MS, &o.P95MS,
 		&o.InputTokens, &o.OutputTokens, &o.AvgTopSimilarity, &o.ActiveUsers,
-		&o.StyleViolationRate, &o.RepairedRate, &o.FactsUsedRate)
+		&o.StyleViolationRate, &o.RepairedRate, &o.FactsUsedRate, &o.TruncationRate)
 	if err != nil {
+		return o, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT stance, count(*)::int FROM agent_runs
+		WHERE created_at > now() - $1::interval AND route = 'agent' AND stance IS NOT NULL
+		GROUP BY stance`, window)
+	if err != nil {
+		return o, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var st string
+		var n int
+		if err := rows.Scan(&st, &n); err != nil {
+			return o, err
+		}
+		o.StanceMix[st] = n
+	}
+	if err := rows.Err(); err != nil {
 		return o, err
 	}
 	// the most recent error of any kind
@@ -214,6 +282,17 @@ type RunRow struct {
 	Repaired        bool     `json:"repaired"`
 	FactsUsed       int      `json:"factsUsed"`
 	Moves           []string `json:"moves"`
+
+	// the topic itself stays out: it is the person's words, and this page
+	// is for the agent's behaviour
+	Stance      *string `json:"stance"`
+	BandMin     *int    `json:"bandMin"`
+	BandMax     *int    `json:"bandMax"`
+	Advice      *string `json:"advice"`
+	CiteMode    *string `json:"citeMode"`
+	Truncated   bool    `json:"truncated"`
+	UsedInWords bool    `json:"usedInWords"`
+	TopicTurns  int     `json:"topicTurns"`
 }
 
 func (s *Store) RecentRuns(ctx context.Context, limit int) ([]RunRow, error) {
@@ -221,7 +300,8 @@ func (s *Store) RecentRuns(ctx context.Context, limit int) ([]RunRow, error) {
 		SELECT id, route, intent, safety_rule, analyser_ok, retrieval_used, chunks_found,
 		       chunks_cited, top_similarity, input_tokens, output_tokens, stop_reason,
 		       stages_ms, total_ms, error, created_at,
-		       prompt_variant, word_budget, reply_words, style_violations, repaired, facts_used, moves
+		       prompt_variant, word_budget, reply_words, style_violations, repaired, facts_used, moves,
+		       stance, band_min, band_max, advice, cite_mode, truncated, used_in_words, topic_turns
 		FROM agent_runs ORDER BY created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
@@ -236,7 +316,9 @@ func (s *Store) RecentRuns(ctx context.Context, limit int) ([]RunRow, error) {
 			&r.RetrievalUsed, &r.ChunksFound, &r.ChunksCited, &r.TopSimilarity,
 			&r.InputTokens, &r.OutputTokens, &r.StopReason, &stages, &r.TotalMS,
 			&r.Error, &r.CreatedAt, &r.PromptVariant, &r.WordBudget, &r.ReplyWords,
-			&r.StyleViolations, &r.Repaired, &r.FactsUsed, &r.Moves); err != nil {
+			&r.StyleViolations, &r.Repaired, &r.FactsUsed, &r.Moves,
+			&r.Stance, &r.BandMin, &r.BandMax, &r.Advice, &r.CiteMode, &r.Truncated,
+			&r.UsedInWords, &r.TopicTurns); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(stages, &r.StagesMS)

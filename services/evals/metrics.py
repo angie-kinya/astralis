@@ -8,13 +8,18 @@ specificity (humans vary more and remember specifics) and reading_ease (plain wo
 read easier). question rates per intent are a band, not a direction: some follow-up
 questions on vent and reflect, never an interview. crisis replies are fixed human
 text, so they count for safety only, never for style.
+
+v2.2 adds the conversation metrics: truncation_rate (a reply that stops mid-sentence;
+the gate wants 0), stance_accuracy against each scenario's `stances`, advice_failures
+(a turn that should advise and did not), research_use_rate on advise and inform turns,
+within_band_rate, cited_rate_inform and stray_marker_rate (markers outside markers mode).
 """
 import json
 import re
 import statistics as st
 import sys
 
-from common import DASH, STOCK, letter_words, load_jsonl, long_words, opener, plain_words, sentences, \
+from common import DASH, STOCK, complete, letter_words, load_jsonl, long_words, opener, plain_words, sentences, \
     syllables, user_asked, words
 
 _STOP = {"with", "from", "that", "this", "they", "their", "about", "work", "team"}
@@ -33,6 +38,43 @@ def _tokens(s: str) -> set[str]:
 
 def _intent(r: dict) -> str | None:
     return (r.get("run") or {}).get("intent")
+
+
+def _run(r: dict) -> dict:
+    return r.get("run") or {}
+
+
+def _stance(r: dict) -> str | None:
+    return _run(r).get("stance")
+
+
+def _wanted(r: dict) -> set[str]:
+    # "explore|advise" accepts either; null or missing checks nothing
+    return set((r.get("want_stance") or "").split("|")) - {""}
+
+
+def truncated(r: dict) -> bool:
+    # what the person saw stops mid-sentence, or the ceiling cost the reply a sentence
+    return not complete(r["reply"]) or bool(_run(r).get("truncated"))
+
+
+def advice_failures(talk: list[dict]) -> list[str]:
+    """turns whose scenario says advise and nothing else, where the planner did not give
+    advice. offering it ("want a couple of ideas?") is not giving it"""
+    return [f"{r['scenario']}:{r['turn']} want=advise got={_stance(r)}/{_run(r).get('advice')}"
+            for r in talk if _wanted(r) == {"advise"} and r.get("run") and _run(r).get("advice") != "give"]
+
+
+def in_band(r: dict) -> bool | None:
+    lo, hi = _run(r).get("bandMin"), _run(r).get("bandMax")
+    if not lo or not hi:
+        return None
+    n = len(words(r["reply"]))
+    return lo * 0.75 <= n <= hi * 1.25  # the lint's slack above, a quarter below
+
+
+def _rate(xs: list[bool]) -> float | None:
+    return (sum(xs) / len(xs)) if xs else None
 
 
 def reading_ease(replies: list[str]) -> float | None:
@@ -85,11 +127,14 @@ def compute(rows: list[dict]) -> dict:
     # question rule as go enforces it (shape.go cadence + lint.go): never two, and none when
     # the reply before asked, on evidence or off-topic turns, or when they asked us something.
     # a missing question on an invite is never a violation, so only the forbid half is checked
+    # v2.2: the stance replaces the intent where a run has one, and an explore turn that
+    # offers ideas may follow a reply that asked: the offer is its one question
     q_viol, prev_asked = 0, {}
     for r in talk:
         q = r["reply"].count("?")
-        forbid = (prev_asked.get(r["scenario"]) or _intent(r) in ("ask_evidence", "off_topic")
-                  or user_asked(r.get("user", "")))
+        stance, offer = _stance(r), _run(r).get("advice") == "offer"
+        quiet = stance in ("inform", "off_topic") if stance else _intent(r) in ("ask_evidence", "off_topic")
+        forbid = (prev_asked.get(r["scenario"]) and not offer) or quiet or user_asked(r.get("user", ""))
         if q > 1 or (q == 1 and forbid):
             q_viol += 1
         prev_asked[r["scenario"]] = q > 0
@@ -118,8 +163,22 @@ def compute(rows: list[dict]) -> dict:
         if fresh & _tokens(r["reply"]):
             hit.add(r["scenario"])
 
+    checked = [r for r in talk if _wanted(r) and r.get("run")]
+    substantive = [r for r in talk if _stance(r) in ("advise", "inform")]
+    band = [b for b in map(in_band, talk) if b is not None]
     m = {
         "replies": len(talk),
+        "truncation_rate": sum(map(truncated, talk)) / n,
+        "stance_accuracy": _rate([_stance(r) in _wanted(r) for r in checked]),
+        "stance_by_kind": {k: sum(_stance(r) == k for r in talk) for k in
+                           ("listen", "explore", "advise", "inform", "greet", "off_topic")},
+        "advice_failures": advice_failures(talk),
+        "research_use_rate": _rate([bool(_run(r).get("usedInWords") or _run(r).get("chunksCited") or r.get("cited"))
+                                    for r in substantive]),
+        "within_band_rate": _rate(band),
+        "cited_rate_inform": _rate([bool(r.get("cited")) for r in talk if _stance(r) == "inform"]),
+        "stray_marker_rate": sum(bool(re.search(r"\[\d", r["reply"])) and _run(r).get("citeMode") != "markers"
+                                 for r in talk if r.get("run")) / n,
         "words_mean": round(st.mean([len(words(r["reply"])) for r in talk]), 1) if talk else 0,
         "question_rate": sum("?" in r["reply"] for r in talk) / n,
         "question_violation_rate": q_viol / n,
@@ -216,6 +275,36 @@ def _selftest() -> None:
     assert m["listen_failures"] == ["r:1 want=listen_only"], m
     m = compute([{**rant, "turn": 1, "reply": "Go on.", "run": {"intent": "vent", "moves": ["listen_only"]}}])
     assert m["listen_failures"] == [], m
+
+    # v2.2: truncation, stances, advice when asked, research use, bands, markers
+    def plan(stance: str, advice: str = "none", **kw) -> dict:
+        return {"intent": "reflect", "stance": stance, "advice": advice, "bandMin": 10, "bandMax": 20, **kw}
+    six = "One two three four five six."  # under 0.75 x 10 words: below the band
+    twelve = "One two three four five six seven eight nine ten eleven twelve."
+    rows = [
+        {**base, "scenario": "m", "turn": 1, "user": "having trouble with motivation", "want_stance": "explore|advise",
+         "reply": twelve + " Want a couple of ideas?", "run": plan("explore", "offer")},
+        {**base, "scenario": "m", "turn": 2, "user": "nothing feels worth starting", "want_stance": "advise",
+         "reply": twelve + " See which fits.", "run": plan("advise", "give", usedInWords=True)},
+        {**base, "scenario": "h", "turn": 1, "user": "i need help with my manager", "want_stance": "advise",
+         "reply": "That's a lot before", "run": plan("explore", "offer")},  # cut off, and no advice
+        {**base, "scenario": "e", "turn": 1, "user": "research on four day weeks", "want_stance": "inform",
+         "reply": twelve + " [1]", "run": plan("inform", "allow", citeMode="markers", chunksCited=1), "cited": 1},
+        {**base, "scenario": "r", "turn": 1, "user": "ugh my manager", "want_stance": "listen",
+         "reply": six + " Research agrees [2].", "run": plan("listen", citeMode="words")},
+    ]
+    m = compute(rows)
+    assert m["truncation_rate"] == round(1 / 5, 3), m  # "before"; a marker after the full stop is fine
+    assert m["stance_accuracy"] == round(4 / 5, 3), m
+    assert m["advice_failures"] == ["h:1 want=advise got=explore/offer"], m
+    assert m["research_use_rate"] == 1.0, m  # the advise turn used it in words, inform cited
+    assert m["cited_rate_inform"] == 1.0, m
+    assert m["stray_marker_rate"] == round(1 / 5, 3), m  # a marker in words mode
+    assert m["within_band_rate"] == round(4 / 5, 3), m  # "before" is 4 words: under the band
+    assert m["stance_by_kind"]["advise"] == 1 and m["stance_by_kind"]["explore"] == 2, m
+    # the offer may follow a question; nothing else may
+    assert m["question_violation_rate"] == 0.0, m
+    assert compute([{**rows[0], "run": {"truncated": True, **rows[0]["run"]}}])["truncation_rate"] == 1.0
     print("metrics selftest ok", json.dumps(m))
 
 

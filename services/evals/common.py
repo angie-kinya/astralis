@@ -3,6 +3,7 @@ import json
 import os
 import re
 import subprocess
+import unicodedata
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -32,6 +33,17 @@ _VOWELS = re.compile(r"[aeiouy]+")
 # shape.go's userAsked: a "?" or a leading question word. "when" and "where" are left
 # out because "when am I supposed to..." in a vent is rhetorical
 _QWORDS = {"what", "how", "why", "who", "are", "is", "do", "does", "can", "could", "would", "will", "should"}
+
+
+# finish.go's complete(): a reply ends a sentence when, past any closing quotes, brackets
+# and a final [n] marker, its last character is terminal punctuation or an emoji
+_TRAILING_CITE = re.compile(r"(\s*\[\d+(?:\s*,\s*\d+)*\])+\s*$")
+_CLOSERS = "\"'”’)]*_"
+
+
+def complete(s: str) -> bool:
+    s = _TRAILING_CITE.sub("", s.strip()).rstrip(_CLOSERS)
+    return bool(s) and (s[-1] in ".!?…" or unicodedata.category(s[-1]) == "So")
 
 
 def words(s: str) -> list[str]:

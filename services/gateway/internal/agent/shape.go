@@ -5,14 +5,15 @@ import (
 	"strings"
 )
 
-// Shape is the form of one reply, decided in Go before the model writes.
-// the model gets one instruction line per field and MaxTokens follows the
-// budget, so a long reply is impossible rather than discouraged
+// Shape is the form of one reply, decided in Go before the model writes. the
+// model gets one instruction line per field. nothing here limits tokens: a
+// reply that runs long is caught by the lint and revised, never cut off
 type Shape struct {
-	Words     int // target length
-	Ask       Ask // question cadence for this reply
-	MayAdvise bool
-	Cite      bool // inline [n] markers allowed
+	Stance Stance
+	Band   Band // words, already mirrored to the person
+	Ask    Ask  // question cadence for this reply
+	Advice Advice
+	Cite   CiteMode
 }
 
 // Ask is the question cadence. the zero value forbids, so a Shape built by
@@ -36,53 +37,92 @@ func (a Ask) String() string {
 	}
 }
 
-// word budgets per intent: {floor, ceiling}. the floors sit where a reply
-// still has room for a reaction and a question; below them replies read curt
-var budgets = map[string][2]int{
-	"greeting": {15, 45}, "off_topic": {20, 50}, "vent": {35, 140},
-	"report_progress": {25, 110}, "reflect": {45, 150},
-	"seek_advice": {70, 180}, "ask_evidence": {90, 220},
+// Advice is how far a reply may go towards suggesting things. the zero value
+// is none, for the same reason Ask's is forbid
+type Advice int
+
+const (
+	AdviceNone  Advice = iota // no suggestions or next steps
+	AdviceOffer               // none yet; ask whether they would like a couple of ideas
+	AdviceAllow               // fine when it follows from the research, not required
+	AdviceGive                // one to three small, concrete things
+)
+
+func (a Advice) String() string {
+	return [...]string{"none", "offer", "allow", "give"}[a]
 }
 
-// shapeFor mirrors the person: a one-line message gets a short reply, never
-// shorter than the intent's floor. the question cadence is not here: it needs
-// the session's history, so Decide sets it
-func shapeFor(intent string, userWords int, retrieve bool) Shape {
-	b, ok := budgets[intent]
+// CiteMode is how research reaches the reply. markers put [n] in the prose and
+// the studies chip under it; words lets the model use what the excerpts say
+// in plain language with no markers, which is how a person who has read the
+// research talks when nobody asked for sources
+type CiteMode int
+
+const (
+	CiteNone    CiteMode = iota // no excerpts, or none wanted
+	CiteWords                   // draw on the excerpts in plain words, no markers
+	CiteMarkers                 // inline [n] markers, verified and renumbered
+)
+
+func (c CiteMode) String() string {
+	return [...]string{"none", "words", "markers"}[c]
+}
+
+// shapeFor is the stance's band mirrored to the person. cadence, advice and
+// citations need the session and the research, so Decide and Handle set them
+func shapeFor(st Stance, userWords int) Shape {
+	b, ok := bands[st]
 	if !ok {
-		b = budgets["reflect"]
+		b = bands[StanceExplore]
 	}
-	words := max(b[0], min(b[1], int(float64(userWords)*1.4)+b[0]/2))
-	return Shape{
-		Words:     words,
-		MayAdvise: intent == "seek_advice" || intent == "ask_evidence",
-		Cite:      retrieve && (intent == "ask_evidence" || intent == "seek_advice"),
-	}
+	return Shape{Stance: st, Band: mirror(b, userWords)}
 }
 
-// MaxTokens is ~1.3 tokens a word plus slack. the floor leaves room for a
-// cited reply's markers, so a short budget truncates nothing mid-sentence
-func (s Shape) MaxTokens() int { return max(160, s.Words*2+64) }
+// wordsPerSentence turns a band into the sentence counts the model is given.
+// models count sentences far better than words, and "about 60 words" was read
+// as a limit to stop at rather than a size to aim for
+const wordsPerSentence = 15
+
+// Sentences is the band as "usually lo to hi sentences"
+func (b Band) Sentences() (lo, hi int) {
+	lo = max(1, (b.Min+wordsPerSentence/2)/wordsPerSentence)
+	hi = max(lo+1, (b.Max+wordsPerSentence/2)/wordsPerSentence)
+	return lo, hi
+}
 
 func (s Shape) Instructions() string {
 	var b strings.Builder
 	b.WriteString("THIS REPLY\n")
-	b.WriteString("Length: about " + strconv.Itoa(s.Words) + " words. Shorter is fine.\n")
-	switch s.Ask {
-	case AskInvite:
+	lo, hi := s.Band.Sentences()
+	b.WriteString("Length: usually " + strconv.Itoa(lo) + " to " + strconv.Itoa(hi) + " sentences. Always finish your last sentence.\n")
+	if s.Band.Max > 150 {
+		b.WriteString("Break it into two or three short paragraphs.\n")
+	}
+	switch {
+	case s.Advice == AdviceOffer:
+		b.WriteString("End by asking, in your own words, whether they'd like a couple of ideas or would rather keep talking it through. That is your only question.\n")
+	case s.Ask == AskInvite:
 		b.WriteString("End with one easy, open question about them, if it feels natural.\n")
-	case AskAllow:
+	case s.Ask == AskAllow:
 		b.WriteString("A question is optional; at most one.\n")
 	default:
 		b.WriteString("Do not ask a question.\n")
 	}
-	if !s.MayAdvise {
-		b.WriteString("Do not give advice or next steps unless they asked for them.\n")
+	switch s.Advice {
+	case AdviceGive:
+		b.WriteString("Offer one to three small, concrete things they could try this week, each tied to something they said and within their control. Offer them, don't prescribe, and invite them to say which fits, if any.\n")
+	case AdviceAllow:
+		b.WriteString("A practical point is fine if it follows from the research; keep it small.\n")
+	default:
+		b.WriteString("Do not give advice or next steps.\n")
 	}
-	if s.Cite {
+	switch s.Cite {
+	case CiteMarkers:
 		b.WriteString("When a sentence relies on a research excerpt, end it with the excerpt's number in square brackets, like [2]. Use only numbers from RESEARCH CONTEXT.\n")
-	} else {
-		b.WriteString("Do not use [n] markers; mention a study in words only if it truly matters.\n")
+	case CiteWords:
+		b.WriteString("Where RESEARCH CONTEXT helps, use it in plain words, the way a friend who has read it would (\"there's decent research that...\"). No [n] markers, no titles or authors.\n")
+	default:
+		b.WriteString("Do not use [n] markers.\n")
 	}
 	return b.String()
 }
@@ -90,19 +130,19 @@ func (s Shape) Instructions() string {
 // askedQuestion reads an earlier reply for the cadence window
 func askedQuestion(reply string) bool { return strings.Contains(reply, "?") }
 
-// inviteIntents are where a question helps someone keep talking. advice and
+// inviteStances are where a question helps someone keep talking. advice and
 // evidence replies already carry the substance; a question there is an
 // interview
-var inviteIntents = map[string]bool{"vent": true, "reflect": true, "report_progress": true, "greeting": true}
+var inviteStances = map[Stance]bool{StanceListen: true, StanceExplore: true, StanceGreet: true}
 
 // cadence decides the question rule for one reply. asked is whether each
 // earlier assistant reply in the window asked, oldest first
-func cadence(intent string, userWords int, userAsked, listening bool, asked []bool, quiet int) Ask {
+func cadence(st Stance, userWords int, userAsked, listening bool, asked []bool, quiet int) Ask {
 	n := len(asked)
-	if (n > 0 && asked[n-1]) || userAsked || intent == "ask_evidence" || intent == "off_topic" {
+	if (n > 0 && asked[n-1]) || userAsked || st == StanceInform || st == StanceOffTopic {
 		return AskForbid
 	}
-	if !inviteIntents[intent] || listening {
+	if !inviteStances[st] || listening {
 		return AskAllow
 	}
 	for _, a := range asked[max(0, n-quiet):] {

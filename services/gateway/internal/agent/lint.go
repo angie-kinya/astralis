@@ -71,7 +71,10 @@ func Lint(reply string, s Shape, prev []string) []string {
 	if q > 1 || (q == 1 && s.Ask == AskForbid) {
 		v = append(v, "question")
 	}
-	if n := len(strings.Fields(reply)); n > s.Words*16/10 {
+	// the band's top with a quarter of slack: over it is long, and a reply
+	// under the band is never a violation, since a short complete reply beats
+	// a padded one. a hand-built shape with no band has no length rule
+	if n := len(strings.Fields(reply)); s.Band.Max > 0 && n > s.Band.Max*5/4 {
 		v = append(v, "length")
 	}
 	if stock.MatchString(reply) {
@@ -82,6 +85,9 @@ func Lint(reply string, s Shape, prev []string) []string {
 	}
 	if !plainWords(reply) {
 		v = append(v, "plain_words")
+	}
+	if !complete(reply) {
+		v = append(v, "truncated")
 	}
 	if op := opener(reply); op != "" {
 		for _, p := range prev[max(0, len(prev)-5):] {
@@ -97,7 +103,8 @@ func Lint(reply string, s Shape, prev []string) []string {
 // repairHints turn violations into editor instructions for the one second pass
 var repairHints = map[string]string{
 	"question":        "remove the question, or keep only one if a question is allowed",
-	"length":          "cut it to about the target length",
+	"length":          "make it shorter, keeping what matters most",
+	"truncated":       "finish the reply: it stops mid-sentence, so end on a complete sentence",
 	"stock_phrase":    "replace stock reassurance with something specific to what they said",
 	"dash":            "use commas or full stops instead of dashes",
 	"plain_words":     "use everyday words, the way you'd say it out loud",
